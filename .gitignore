@@ -1,0 +1,6 @@
+/run/saves
+/build/loom-cache
+/.gradle/loom-cache
+/run/logs
+run/downloads/log.json
+run/command_history.txt
