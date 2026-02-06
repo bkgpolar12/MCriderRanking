@@ -1,15 +1,15 @@
 {
 	"schemaVersion": 1,
 	"id": "modid",
-	"version": "1.0.0",
-	"name": "Example mod",
-	"description": "This is an example description! Tell everyone what your mod is about!",
+	"version": "0.0.5-alpha3",
+	"name": "MCRiderRanking Prototype",
+	"description": "Daktoritang",
 	"authors": [
-		"Me!"
+		"BKGpolar"
 	],
 	"contact": {
-		"homepage": "https://fabricmc.net/",
-		"sources": "https://github.com/FabricMC/fabric-example-mod"
+		"homepage": "https://www.youtube.com/@bkgp0lar",
+		"sources": "https://www.youtube.com/@bkgp0lar"
 	},
 	"license": "CC0-1.0",
 	"icon": "assets/modid/icon.png",

@@ -1,0 +1,14 @@
+{
+  "mappings": {
+    "com/example/mixin/client/InGameHudMixin": {
+      "render": "Lnet/minecraft/class_329;method_1753(Lnet/minecraft/class_332;Lnet/minecraft/class_9779;)V"
+    }
+  },
+  "data": {
+    "named:intermediary": {
+      "com/example/mixin/client/InGameHudMixin": {
+        "render": "Lnet/minecraft/class_329;method_1753(Lnet/minecraft/class_332;Lnet/minecraft/class_9779;)V"
+      }
+    }
+  }
+}

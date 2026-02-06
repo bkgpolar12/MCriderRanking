@@ -4,3 +4,15 @@
 /run/logs
 run/downloads/log.json
 run/command_history.txt
+*.tmp
+/run/.fabric/tmp
+/run/.fabric/processedMods
+/run/config
+/run/journeymap
+/run/mods
+*.class
+/build/devlibs
+/build/libs
+/run
+/build/tmp
+*.bin
