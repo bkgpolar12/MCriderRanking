@@ -11,7 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * config/modid.json 에 저장되는 간단한 설정
+ * config/mcrider_ranking_config.json 에 저장되는 간단한 설정
  */
 public final class ModConfig {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -22,6 +22,9 @@ public final class ModConfig {
 
     // ===== 설정 값들 =====
     public boolean autoSubmitEnabled = true;
+
+    //디버그 로그(채팅 출력) 토글
+    public boolean debugLogEnabled = false;
 
     // 싱글톤
     private static ModConfig INSTANCE = new ModConfig();

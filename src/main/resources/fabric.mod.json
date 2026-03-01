@@ -2,7 +2,7 @@
 	"schemaVersion": 1,
 	"id": "modid",
 	"version": "${version}",
-	"name": "MCRiderRanking Prototype",
+	"name": "MCRiderRanking",
 	"description": "Daktoritang",
 	"authors": [
 		"BKGpolar"
@@ -11,7 +11,7 @@
 		"homepage": "https://www.youtube.com/@bkgp0lar",
 		"sources": "https://www.youtube.com/@bkgp0lar"
 	},
-	"license": "CC0-1.0",
+	"license": "CC BY-ND",
 	"icon": "assets/modid/icon.png",
 	"environment": "*",
 	"entrypoints": {

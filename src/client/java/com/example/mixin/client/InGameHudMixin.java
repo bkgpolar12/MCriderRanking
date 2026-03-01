@@ -2,12 +2,20 @@ package com.example.mixin.client;
 
 import com.example.rankinglog.AddRankingScreen;
 import com.example.rankinglog.AutoSubmitter;
+import com.example.rankinglog.BodyCaptureManager;
+import com.example.rankinglog.DebugLog;
+import com.example.rankinglog.ModConfig;
+import com.example.rankinglog.ModGatekeeper;
+
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.hud.InGameHud;
+import net.minecraft.client.network.ServerInfo;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.decoration.DisplayEntity;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.Box;
+import net.minecraft.util.math.Vec3d;
+
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -15,15 +23,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import net.minecraft.util.math.Vec3d;
-
-import java.util.regex.Pattern;
-
-import net.minecraft.client.network.ServerInfo;
-
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.regex.Pattern;
 
 @Mixin(InGameHud.class)
 public class InGameHudMixin {
@@ -53,25 +56,6 @@ public class InGameHudMixin {
 
 	@Unique private static String cachedEngineName = null;
 	@Unique private static long lastEngineScanMs = 0;
-	@Unique private boolean israce = false;
-
-	// ✅ 카트바디 캐시(최종 제출용)
-	@Unique private static String cachedKartBodyName = null;
-
-	// ✅ 메인핸드 마지막 유효 이름(메인핸드가 비어도 이 값은 유지)
-	@Unique private static String cachedMainhandName = null;
-
-	// ✅ 중복 갱신 방지 키(아이템 타입+이름)
-	@Unique private static String lastOffhandKey = null;
-	@Unique private static String lastMainhandKey = null;
-
-	// ✅ 캡처 구간: subtitle 로딩중... ~ title 3
-	@Unique private boolean bodyCaptureActive = false;
-	@Unique private boolean bodyCapturedThisRace = false;
-
-	// 너무 빡세게 돌지 않게(150ms)
-	@Unique private static final long BODY_SCAN_INTERVAL_MS = 150;
-	@Unique private long lastBodyScanMs = 0;
 
 	@Unique private boolean soloOk = true;
 	@Unique private long lastSoloScanMs = 0;
@@ -91,14 +75,26 @@ public class InGameHudMixin {
 
 	@Unique private boolean random_text = true;
 
-	// 엔진 이름 후보 패턴(원하는 엔진 표기들에 맞춰 조정)
+	//로그 스팸 방지용
+	@Unique private static long lastTrackLogMs = 0;
+	@Unique private static String lastTrackLogValue = null;
+
+	@Unique private static long lastEngineLogMs = 0;
+	@Unique private static String lastEngineLogValue = null;
+
+	@Unique private static final long LOG_COOLDOWN_MS = 600; // 같은 내용 0.6초 내 중복 출력 방지
+
+	// 엔진 이름 후보 패턴
 	@Unique
 	private static final Pattern ENGINE_NAME_PATTERN =
-			Pattern.compile("\\[(X|EX|JIU|NEW|Z7|V1|A2|1\\.0|PRO|RALLY|CHARGE|N1|KE|BOAT|GEAR|F1|MK|KRP)\\엔진",
-					Pattern.CASE_INSENSITIVE);
+			Pattern.compile("\\[[A-Z0-9.+]+\\s*엔진", Pattern.CASE_INSENSITIVE);
 
 	@Unique private static final double ENGINE_SCAN_RADIUS_XZ = 3.0;
 	@Unique private static final double ENGINE_SCAN_RADIUS_Y  = 6.0;
+
+	@Unique private static String cachedTireName = "UNKNOWN";
+	@Unique private static long lastTireScanMs = 0;
+	@Unique private static final long TIRE_SCAN_INTERVAL_MS = 800;
 
 	/* =========================
        로비 범위 (트랙 텍스트 디스플레이)
@@ -121,66 +117,63 @@ public class InGameHudMixin {
 		String s = subtitle != null ? subtitle.getString() : "";
 
 		// -------------------------
-		// ✅ 카트바디 캡처 구간 제어
-		// 시작: subtitle == "로딩중..."
-		// 종료: title == "3"
+		//서버 체크
 		// -------------------------
 		if (isAllowedServer()) {
 
-			// 시작 트리거(처음 로딩중... 감지)
-			if ("로딩중...".equals(t) && !bodyCaptureActive && !bodyCapturedThisRace) {
-				israce = true;
-				bodyCaptureActive = true;
-				lastBodyScanMs = 0;
-
-				// 캐시 초기화
-				cachedKartBodyName = null;
-				lastOffhandKey = null;
-				lastMainhandKey = null;
-				// 메인핸드 마지막 유효값은 "이 레이스에서 다시 잡은 값"이 좋으니 리셋 권장
-				cachedMainhandName = null;
-
-				// 디버그 원하면
-				//client.player.sendMessage(Text.literal("§7[Body] 캡처 시작"), false);
+			// -------------------------
+			//(1) 카트바디 캡처 시작 조건: HUD 타이틀 "로딩중..."
+			//(2) 적용된 모드 캡처 시작 조건도 동일(여기서 onLoadingTitle 호출)
+			// -------------------------
+			if ("로딩중...".equals(t)) {
+				BodyCaptureManager.onLoadingDetected("hud_title");
+				try { ModGatekeeper.onLoadingTitle(); } catch (Throwable ignored) {}
 			}
 
-			// 캡처 진행 중이면, 주기적으로 스캔
-			if (bodyCaptureActive && !bodyCapturedThisRace) {
-				scanAndCacheKartBody();
-			}
+			// -------------------------
+			//카트바디 스캔: 매 프레임 호출(내부에서 active일 때만 150ms)
+			// -------------------------
+			BodyCaptureManager.tickScan();
 
-			if ("완주 실패".equals(t)){
-				bodyCapturedThisRace = false;
-			}
-
-			if ("".equals(t) && israce && lastTitle.equals("로딩중...")){
-				bodyCapturedThisRace = false;
-				bodyCaptureActive = false;
-				//client.player.sendMessage(Text.literal("§7[Body] 캡처 종료: " + cachedKartBodyName), false);
-			}
-
-			// 종료 트리거: title == "3"
+			// -------------------------
+			//카트바디 캡처 종료 조건: 타이틀 "3"
+			// -------------------------
 			if ("3".equals(t)) {
+				BodyCaptureManager.onTitle3();
+				// 타이어 감지
+				long nowTire = System.currentTimeMillis();
+				if (nowTire - lastTireScanMs > TIRE_SCAN_INTERVAL_MS) {
+					lastTireScanMs = nowTire;
 
-				// 끝까지 못 잡았으면 UNKNOWN
-				if (cachedKartBodyName == null || cachedKartBodyName.isBlank()) {
-					cachedKartBodyName = "UNKNOWN";
+					String tire = findTireNameFromAttribute();
+					cachedTireName = tire;
+
+					if (DebugLog.enabled()) {
+						DebugLog.chat("§d[Tire] 감지: " + cachedTireName);
+					}
 				}
-
-				// 디버그 원하면
-
 			}
 
-			// 레이스가 완전히 리셋되는 타이밍이 필요하면 여기에 추가 가능
-			// 예: 타이틀이 "로딩중..."으로 다시 시작될 때 bodyCapturedThisRace=false로 초기화되므로 지금 구조면 OK
-			if (!"로딩중...".equals(s) && !"3".equals(t)) {
-				// 다음 레이스 준비(너무 공격적으로 리셋하면 안되니 조건은 가볍게)
-				// 보통 "로딩중..."에서 다시 시작하니까 여기서는 굳이 안 건드려도 됨
+			// -------------------------
+			//카트바디/모드 공통 실패 종료 조건: "완주 실패"
+			//  - 카트바디: 종료 처리
+			//  - 모드: freezeNow로 종료 확정
+			// -------------------------
+			if ("완주 실패".equals(t)) {
+				BodyCaptureManager.onRaceFailed();
+				try { ModGatekeeper.freezeNow(); } catch (Throwable ignored) {}
+			}
+
+			// -------------------------
+			//적용된 모드 캡처 종료 조건: 타이틀 "1"
+			// -------------------------
+			if ("1".equals(t)) {
+				try { ModGatekeeper.freezeNow(); } catch (Throwable ignored) {}
 			}
 		}
 
 		// -------------------------
-		// 트랙 이름 재시도 처리(렌더마다 체크)
+		// 트랙 이름 재시도 처리
 		// -------------------------
 		if (pendingTrackRetry) {
 			long now = System.currentTimeMillis();
@@ -189,14 +182,12 @@ public class InGameHudMixin {
 				trackRetryCount++;
 
 				boolean ok = tryCacheTrackName();
+				logTrack(ok ? ("§7[Track] 재시도 성공: " + safeShow(cachedTrackName)) : "§7[Track] 재시도 실패(list 부족/빈값)");
 
 				if (ok && cachedTrackName != null && !cachedTrackName.isBlank()) {
 					pendingTrackRetry = false;
 
-					String track = cachedTrackName
-							.replace("\n", " ")
-							.replaceAll("\\s+", " ")
-							.trim();
+					String track = cachedTrackName.replace("\n", " ").replaceAll("\\s+", " ").trim();
 
 					if (track.toUpperCase().contains("RANDOM")) {
 						if (random_text) {
@@ -220,12 +211,14 @@ public class InGameHudMixin {
 						return;
 					}
 
-					String player = client.player.getGameProfile().getName();
-					if (!com.example.rankinglog.ModConfig.get().autoSubmitEnabled) return;
+					//여기서는 freezeNow 호출하지 않음 (요구사항: "1" 또는 "완주 실패"에서만 종료)
+					String modesCsv = "없음";
+					try { modesCsv = ModGatekeeper.getModesCsv(); } catch (Throwable ignored) {}
 
-					String bodyName = (cachedKartBodyName == null || cachedKartBodyName.isBlank())
-							? "UNKNOWN"
-							: cachedKartBodyName;
+					String player = client.player.getGameProfile().getName();
+					if (!ModConfig.get().autoSubmitEnabled) return;
+
+					String bodyName = BodyCaptureManager.getCachedKartBodyNameOrUnknown();
 
 					AutoSubmitter.submitAsync(
 							player,
@@ -234,7 +227,9 @@ public class InGameHudMixin {
 							pendingTimeMillis,
 							0,
 							engineName,
-							bodyName
+							bodyName,
+							cachedTireName,
+							modesCsv
 					);
 
 					pendingTimeStr = null;
@@ -264,20 +259,25 @@ public class InGameHudMixin {
 					}
 				}
 
-				// "3" 타이틀 감지 시 엔진 이름 캐싱
+				// "3" 타이틀 감지 시: 엔진 이름 캐싱(모드 freezeNow는 여기서 하지 않음)
 				if (t.equals("3")) {
 					long now = System.currentTimeMillis();
 					if (now - lastEngineScanMs > 800) {
 						lastEngineScanMs = now;
 
-						String engine = findEngineNameNearPlayer();
-						if (engine != null) {
-							cachedEngineName = engine;
+						//엔진 감지
+						String engineRaw = findEngineNameNearPlayer();
+						if (engineRaw != null) {
+							String engine = engineRaw
+									.replace("[", "")
+									.replace("]", "")
+									.replace("엔진", "")
+									.trim();
+							cachedEngineName = engine.isBlank() ? "UNKNOWN" : engine;
+							logEngine("§a[Engine] 감지 성공: " + cachedEngineName);
 						} else {
-							client.player.sendMessage(
-									Text.literal("§c엔진 감지 실패(주변 텍스트디스플레이 없음/패턴 불일치)"),
-									false
-							);
+							logEngine("§c[Engine] 감지 실패(주변 텍스트디스플레이 없음/패턴 불일치)");
+							if (DebugLog.enabled()) DebugLog.chat("§7[Engine] box 내 텍스트디스플레이가 없거나 패턴이 안맞음");
 						}
 					}
 				}
@@ -288,36 +288,28 @@ public class InGameHudMixin {
 			// -------------------------
 			if (!s.equals(lastSubtitle) && s.matches("^\\d{2}:\\d{2}\\.\\d{3}$")) {
 
-				bodyCapturedThisRace = false;
-
 				if (!soloOk) {
 					long now = System.currentTimeMillis();
 					boolean sameTimeAsLast = (lastSoloFailTimeStr != null && lastSoloFailTimeStr.equals(s));
 					boolean inCooldown = (now - lastSoloFailMsgMs) < SOLO_FAIL_COOLDOWN_MS;
 
 					if (!sameTimeAsLast && !inCooldown) {
-						client.player.sendMessage(
-								Text.literal("플레이어가 최대 1명이어야 기록이 등록됩니다."),
-								false
-						);
+						client.player.sendMessage(Text.literal("플레이어가 최대 1명이어야 기록이 등록됩니다."), false);
 						lastSoloFailTimeStr = s;
 						lastSoloFailMsgMs = now;
 					}
 					return;
 				}
 
-				if (!com.example.rankinglog.ModGatekeeper.isModsClean()) {
-					if (!modWarningShown) {
-						client.player.sendMessage(
-								Text.literal("모드가 모두 꺼져있어야 기록이 등록됩니다."),
-								false
-						);
-						modWarningShown = true;
-					}
-					return;
-				}
+				//여기서는 freezeNow 호출하지 않음 (요구사항 준수)
+				String modesCsv = "없음";
+				try { modesCsv = ModGatekeeper.getModesCsv(); } catch (Throwable ignored) {}
+
+				if (DebugLog.enabled()) DebugLog.chat("§7[Mode] 제출 모드: " + modesCsv);
 
 				boolean ok = tryCacheTrackName();
+				logTrack(ok ? ("§a[Track] 감지 성공: " + safeShow(cachedTrackName)) : "§c[Track] 감지 실패(list 부족/빈값)");
+
 				if (!ok) {
 					pendingTrackRetry = true;
 					trackRetryStartMs = System.currentTimeMillis();
@@ -328,10 +320,7 @@ public class InGameHudMixin {
 					return;
 				}
 
-				String track = cachedTrackName
-						.replace("\n", " ")
-						.replaceAll("\\s+", " ")
-						.trim();
+				String track = cachedTrackName.replace("\n", " ").replaceAll("\\s+", " ").trim();
 
 				if (track.toUpperCase().contains("RANDOM")) {
 					if (random_text) {
@@ -339,7 +328,6 @@ public class InGameHudMixin {
 						random_text = false;
 					}
 					return;
-
 				}
 
 				if (track.isBlank()) {
@@ -348,16 +336,16 @@ public class InGameHudMixin {
 				}
 
 				String engineName = (cachedEngineName == null) ? "UNKNOWN" : cachedEngineName;
+				logEngine("§7[Engine] 제출 엔진: " + engineName);
 
 				long timeMillis = AddRankingScreen.parseTimeToMillis(s);
 				if (timeMillis < 0) return;
 
 				String player = client.player.getGameProfile().getName();
-				if (!com.example.rankinglog.ModConfig.get().autoSubmitEnabled) return;
+				if (!ModConfig.get().autoSubmitEnabled) return;
 
-				String bodyName = (cachedKartBodyName == null || cachedKartBodyName.isBlank())
-						? "UNKNOWN"
-						: cachedKartBodyName;
+				String bodyName = BodyCaptureManager.getCachedKartBodyNameOrUnknown();
+				if (DebugLog.enabled()) DebugLog.chat("§7[Body] 제출 바디: " + bodyName);
 
 				AutoSubmitter.submitAsync(
 						player,
@@ -366,7 +354,9 @@ public class InGameHudMixin {
 						timeMillis,
 						0,
 						engineName,
-						bodyName
+						bodyName,
+						cachedTireName,
+						modesCsv
 				);
 			}
 
@@ -375,102 +365,34 @@ public class InGameHudMixin {
 		}
 	}
 
-	/* =========================
-	   ✅ 카트바디 스캔
-	   - 왼손 우선
-	   - 왼손이 비면: "메인핸드 마지막 유효값" 사용
-	   - 메인핸드는 "비었을 때 갱신하지 않음" => 직전 값 유지
-	   ========================= */
 	@Unique
-	private void scanAndCacheKartBody() {
+	private String findTireNameFromAttribute() {
 		MinecraftClient client = MinecraftClient.getInstance();
-		if (client.player == null) return;
+		if (client.player == null) return "UNKNOWN";
 
-		long now = System.currentTimeMillis();
-		if (now - lastBodyScanMs < BODY_SCAN_INTERVAL_MS) return;
-		lastBodyScanMs = now;
+		var inst = client.player.getAttributeInstance(
+				net.minecraft.entity.attribute.EntityAttributes.EXPLOSION_KNOCKBACK_RESISTANCE
+		);
+		if (inst == null) return "UNKNOWN";
 
-		// 1) 메인핸드는 유효할 때만 cachedMainhandName 갱신(비면 직전 유지)
-		String main = readMainhandNameAndCacheLast();
-
-		// 2) 왼손 우선으로 읽기(유효하면 즉시 최종값으로)
-		String off = readOffhandNameIfPresent();
-
-		if (off != null && !off.isBlank()) {
-			cachedKartBodyName = off;
-			return;
-		}
-
-		// 3) 왼손이 없으면 "메인핸드 직전값"
-		if (cachedMainhandName != null && !cachedMainhandName.isBlank()) {
-			cachedKartBodyName = cachedMainhandName;
-			return;
-		}
-
-		// 4) 그래도 없으면 (아직 아이템이 안 잡힌 상태) 그냥 유지
-		// 캡처 종료 시 UNKNOWN으로 처리됨
-	}
-
-	@Unique
-	private String readOffhandNameIfPresent() {
-		MinecraftClient client = MinecraftClient.getInstance();
-		if (client.player == null) return null;
-
-		try {
-			var stack = client.player.getOffHandStack();
-			if (stack == null || stack.isEmpty()) return null;
-
-			String name = safeItemName(stack.getName().getString());
-			if (name == null) return null;
-
-			String key = stack.getItem().toString() + "|" + name;
-			if (key.equals(lastOffhandKey)) return name;
-			lastOffhandKey = key;
-
-			return name;
-		} catch (Throwable ignored) {
-			return null;
-		}
-	}
-
-	/**
-	 * ✅ 요구사항:
-	 * - 메인핸드에 아이템이 있다가 empty가 됐을 때, 직전 이름을 쓰고 싶다
-	 * => 그래서 empty이면 cachedMainhandName을 "절대 지우지 않음"
-	 * => 아이템이 유효할 때만 갱신
-	 */
-	@Unique
-	private String readMainhandNameAndCacheLast() {
-		MinecraftClient client = MinecraftClient.getInstance();
-		if (client.player == null) return null;
-
-		try {
-			var stack = client.player.getMainHandStack();
-
-			// ✅ empty면 "직전값 유지"
-			if (stack == null || stack.isEmpty()) {
-				return cachedMainhandName;
+		for (var mod : inst.getModifiers()) {
+			var id = mod.id();
+			if (id != null && id.toString().equals("minecraft:kart-tire")) {
+				int value = (int) mod.value();
+				return mapTireValueToName(value);
 			}
-
-			String name = safeItemName(stack.getName().getString());
-			if (name == null) return cachedMainhandName;
-
-			String key = stack.getItem().toString() + "|" + name;
-			if (key.equals(lastMainhandKey)) return cachedMainhandName;
-
-			lastMainhandKey = key;
-			cachedMainhandName = name;
-			return cachedMainhandName;
-		} catch (Throwable ignored) {
-			return cachedMainhandName;
 		}
+
+		return "UNKNOWN";
 	}
 
 	@Unique
-	private String safeItemName(String raw) {
-		if (raw == null) return null;
-		String s = raw.trim();
-		return s.isEmpty() ? null : s;
+	private static String mapTireValueToName(int value) {
+		return switch (value) {
+			case 0 -> "레이싱 타이어";
+			case 1 -> "스파이크 타이어";
+			default -> "UNKNOWN";
+		};
 	}
 
 	@Unique
@@ -499,15 +421,13 @@ public class InGameHudMixin {
 
 		for (DisplayEntity.TextDisplayEntity td : list) {
 			String text = td.getText().getString().replace("\n", " ").trim();
-			if (ENGINE_NAME_PATTERN.matcher(text).find()) {
-				var m = ENGINE_NAME_PATTERN.matcher(text);
-				if (m.find()) {
-					return m.group(1).toUpperCase();
-				}
-				return text;
+			var m = ENGINE_NAME_PATTERN.matcher(text);
+			if (m.find()) {
+				return m.group(0).toUpperCase();
 			}
 		}
 
+		// fallback: 위쪽 텍스트
 		list.sort(Comparator.comparingDouble(Entity::getY).reversed());
 		String top = list.get(0).getText().getString().replace("\n", " ").replaceAll("\\s+", " ").trim();
 		return top.isBlank() ? null : top;
@@ -539,7 +459,7 @@ public class InGameHudMixin {
 		String allowed = ALLOWED_ADDRESS.trim().toLowerCase();
 		String devserver = ALLOWED_ADDRESS1.trim().toLowerCase();
 
-		boolean ok = addr.equals(allowed) || addr.equals(devserver);
+		boolean ok = addr.equals(allowed); // -- 개발섭 || addr.equals(devserver)
 
 		showServerDebugOnce(
 				key,
@@ -550,7 +470,7 @@ public class InGameHudMixin {
 			boolean addrHasPort = addr.contains(":");
 			boolean allowedHasPort = allowed.contains(":");
 			if (!ok && addrHasPort != allowedHasPort) {
-				me.sendMessage(Text.literal("§e[MCRiderRanking] 포트 포함 여부가 달라서 불일치일 수 있음"), false);
+				DebugLog.chat("§e[MCRiderRanking] 포트 포함 여부가 달라서 불일치일 수 있음");
 			}
 		}
 
@@ -646,5 +566,36 @@ public class InGameHudMixin {
 			}
 		}
 		return false;
+	}
+
+	/* =========================
+      로그 유틸(스팸 방지)
+       ========================= */
+	@Unique
+	private void logTrack(String msg) {
+		if (!DebugLog.enabled()) return;
+		long now = System.currentTimeMillis();
+		if (msg.equals(lastTrackLogValue) && (now - lastTrackLogMs) < LOG_COOLDOWN_MS) return;
+		lastTrackLogValue = msg;
+		lastTrackLogMs = now;
+		DebugLog.chat(msg);
+	}
+
+	@Unique
+	private void logEngine(String msg) {
+		if (!DebugLog.enabled()) return;
+		long now = System.currentTimeMillis();
+		if (msg.equals(lastEngineLogValue) && (now - lastEngineLogMs) < LOG_COOLDOWN_MS) return;
+		lastEngineLogValue = msg;
+		lastEngineLogMs = now;
+		DebugLog.chat(msg);
+	}
+
+	@Unique
+	private String safeShow(String v) {
+		if (v == null) return "null";
+		String s = v.replace("\n", " ").replaceAll("\\s+", " ").trim();
+		if (s.isEmpty()) return "(blank)";
+		return s;
 	}
 }

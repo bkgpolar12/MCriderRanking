@@ -3,7 +3,8 @@
 	"package": "com.example.mixin.client",
 	"compatibilityLevel": "JAVA_21",
 	"client": [
-		"InGameHudMixin"
+		"InGameHudMixin",
+		"DrawContextMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

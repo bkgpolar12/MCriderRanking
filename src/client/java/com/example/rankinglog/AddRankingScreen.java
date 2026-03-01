@@ -93,6 +93,8 @@ public class AddRankingScreen extends Screen {
                             String engineName = "[X]";
                             String bodyName = "테스트";
                             int engine = 0;
+                            String modesCsv = "없음";
+                            String tireName = "레이싱 타이어";
 
                             // 1) best 기록 확인 (선택)
                             Long best = checkBestRecord(player, track, engineName);
@@ -112,7 +114,7 @@ public class AddRankingScreen extends Screen {
                             }
 
                             // 2) 등록
-                            JsonObject submitRes = submitRecord(player, track, timeStr, newTimeMillis, engineName, bodyName);
+                            JsonObject submitRes = submitRecord(player, track, timeStr, newTimeMillis, engineName, bodyName, tireName, modesCsv);
 
                             boolean ok = submitRes.has("ok") && submitRes.get("ok").getAsBoolean();
                             if (!ok) {
@@ -361,15 +363,14 @@ public class AddRankingScreen extends Screen {
         }
     }
 
-    public static JsonObject submitRecord(
-            String player,
-            String track,
-            String timeStr,
-            long timeMillis,
-            String engineName,
-            String bodyName
-    ) {
-        String json = String.format("""
+    // (예시 시그니처)
+    public static JsonObject submitRecord(String player, String track, String timeStr, long timeMillis,
+                                          String engineName, String bodyName, String tireName, String modesCsv)
+        // JSON body에 tireName 추가:
+        // "tireName": tireName
+
+ {
+     String json = String.format("""
 {
   "action": "submit",
   "player": "%s",
@@ -378,12 +379,16 @@ public class AddRankingScreen extends Screen {
   "timeMillis": %d,
   "engine": %d,
   "engineName": "%s",
-  "bodyName": "%s"
+  "bodyName": "%s",
+  "modes": "%s",
+  "tire": "%s"
 }
 """,
-                player, track, timeStr, timeMillis, 0,
-                engineName, bodyName
-        );
+             player, track, timeStr, timeMillis, 0,
+             engineName, bodyName,
+             modesCsv, tireName
+     );
+
 
 
         try {

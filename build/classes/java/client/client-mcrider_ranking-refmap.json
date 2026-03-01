@@ -1,11 +1,27 @@
 {
   "mappings": {
+    "com/example/mixin/client/DrawContextMixin": {
+      "drawCenteredText(Lnet/minecraft/client/font/TextRenderer;Ljava/lang/String;III)V": "Lnet/minecraft/class_332;drawCenteredText(Lnet/minecraft/class_327;Ljava/lang/String;III)V",
+      "drawCenteredText(Lnet/minecraft/client/font/TextRenderer;Lnet/minecraft/text/Text;III)V": "Lnet/minecraft/class_332;drawCenteredText(Lnet/minecraft/class_327;Lnet/minecraft/class_2561;III)V",
+      "drawText(Lnet/minecraft/client/font/TextRenderer;Ljava/lang/String;IIIZ)I": "Lnet/minecraft/class_332;method_51433(Lnet/minecraft/class_327;Ljava/lang/String;IIIZ)I",
+      "drawText(Lnet/minecraft/client/font/TextRenderer;Lnet/minecraft/text/Text;IIIZ)I": "Lnet/minecraft/class_332;method_51439(Lnet/minecraft/class_327;Lnet/minecraft/class_2561;IIIZ)I",
+      "drawTextWithShadow(Lnet/minecraft/client/font/TextRenderer;Ljava/lang/String;III)I": "Lnet/minecraft/class_332;method_25303(Lnet/minecraft/class_327;Ljava/lang/String;III)I",
+      "drawTextWithShadow(Lnet/minecraft/client/font/TextRenderer;Lnet/minecraft/text/Text;III)I": "Lnet/minecraft/class_332;method_27535(Lnet/minecraft/class_327;Lnet/minecraft/class_2561;III)I"
+    },
     "com/example/mixin/client/InGameHudMixin": {
       "render": "Lnet/minecraft/class_329;method_1753(Lnet/minecraft/class_332;Lnet/minecraft/class_9779;)V"
     }
   },
   "data": {
     "named:intermediary": {
+      "com/example/mixin/client/DrawContextMixin": {
+        "drawCenteredText(Lnet/minecraft/client/font/TextRenderer;Ljava/lang/String;III)V": "Lnet/minecraft/class_332;drawCenteredText(Lnet/minecraft/class_327;Ljava/lang/String;III)V",
+        "drawCenteredText(Lnet/minecraft/client/font/TextRenderer;Lnet/minecraft/text/Text;III)V": "Lnet/minecraft/class_332;drawCenteredText(Lnet/minecraft/class_327;Lnet/minecraft/class_2561;III)V",
+        "drawText(Lnet/minecraft/client/font/TextRenderer;Ljava/lang/String;IIIZ)I": "Lnet/minecraft/class_332;method_51433(Lnet/minecraft/class_327;Ljava/lang/String;IIIZ)I",
+        "drawText(Lnet/minecraft/client/font/TextRenderer;Lnet/minecraft/text/Text;IIIZ)I": "Lnet/minecraft/class_332;method_51439(Lnet/minecraft/class_327;Lnet/minecraft/class_2561;IIIZ)I",
+        "drawTextWithShadow(Lnet/minecraft/client/font/TextRenderer;Ljava/lang/String;III)I": "Lnet/minecraft/class_332;method_25303(Lnet/minecraft/class_327;Ljava/lang/String;III)I",
+        "drawTextWithShadow(Lnet/minecraft/client/font/TextRenderer;Lnet/minecraft/text/Text;III)I": "Lnet/minecraft/class_332;method_27535(Lnet/minecraft/class_327;Lnet/minecraft/class_2561;III)I"
+      },
       "com/example/mixin/client/InGameHudMixin": {
         "render": "Lnet/minecraft/class_329;method_1753(Lnet/minecraft/class_332;Lnet/minecraft/class_9779;)V"
       }

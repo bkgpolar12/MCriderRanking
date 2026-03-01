@@ -1,8 +1,8 @@
 {
 	"schemaVersion": 1,
 	"id": "modid",
-	"version": "0.0.5-alpha3",
-	"name": "MCRiderRanking Prototype",
+	"version": "0.2-alpha1",
+	"name": "MCRiderRanking",
 	"description": "Daktoritang",
 	"authors": [
 		"BKGpolar"
