@@ -5,6 +5,7 @@ import net.minecraft.entity.attribute.EntityAttributeInstance;
 import net.minecraft.entity.attribute.EntityAttributes;
 import net.minecraft.entity.decoration.DisplayEntity;
 import net.minecraft.text.Text;
+import net.minecraft.text.TextColor;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.Box;
 
@@ -23,7 +24,10 @@ public final class BodyCaptureManager {
     // 제출용 캐시 (최종으로 쓸 값)
     private static String cachedKartBodyName = null;
 
-    // ✅ 타이어 캐시 (최종으로 쓸 값)
+    // ✅ 색상 캐시 (최종으로 쓸 값)
+    private static String cachedKartColor = null;
+
+    // 타이어 캐시 (최종으로 쓸 값)
     private static String cachedTireName = null;
 
     // 손 감지 캐시
@@ -37,7 +41,7 @@ public final class BodyCaptureManager {
     //item_display 중복 갱신 방지 키
     private static String lastItemDisplayKey = null;
 
-    // ✅ 타이어 중복 로그 방지 키
+    // 타이어 중복 로그 방지 키
     private static String lastTireKey = null;
 
     // 로그 스팸 방지
@@ -48,14 +52,19 @@ public final class BodyCaptureManager {
     //item_display 탐색 반경(블록)
     private static final double ITEM_DISPLAY_SCAN_RADIUS = 16.0;
 
-    // ✅ kart-tire modifier id
+    // kart-tire modifier id
     private static final Identifier KART_TIRE_ID = Identifier.of("minecraft", "kart-tire");
 
     public static String getCachedKartBodyNameOrUnknown() {
-        if (cachedKartBodyName == null || cachedKartBodyName.isBlank()) return "UNKNOWN";
+        if (cachedKartBodyName == null || cachedKartBodyName.trim().isEmpty()) return "UNKNOWN";
         return cachedKartBodyName;
     }
 
+    // ✅ 서버로 보낼 때 사용할 색상 호출 메서드
+    public static String getCachedKartColorOrHex() {
+        if (cachedKartColor == null || cachedKartColor.trim().isEmpty()) return "#FFFFFF";
+        return cachedKartColor;
+    }
 
     /** HUD 타이틀/커스텀 스크린 텍스트에서 "로딩중..." 감지하면 호출 */
     public static void onLoadingDetected(String sourceTag) {
@@ -71,6 +80,7 @@ public final class BodyCaptureManager {
 
         // 캐시 초기화
         cachedKartBodyName = null;
+        cachedKartColor = null; // ✅ 색상 초기화
         cachedTireName = null;
 
         cachedOffhandName = null;
@@ -93,10 +103,10 @@ public final class BodyCaptureManager {
         active = false;
         capturedThisRace = true;
 
-        if (cachedKartBodyName == null || cachedKartBodyName.isBlank()) {
+        if (cachedKartBodyName == null || cachedKartBodyName.trim().isEmpty()) {
             cachedKartBodyName = "UNKNOWN";
         }
-        if (cachedTireName == null || cachedTireName.isBlank()) {
+        if (cachedTireName == null || cachedTireName.trim().isEmpty()) {
             cachedTireName = "UNKNOWN";
         }
 
@@ -110,14 +120,38 @@ public final class BodyCaptureManager {
         active = false;
         capturedThisRace = true;
 
-        if (cachedKartBodyName == null || cachedKartBodyName.isBlank()) {
+        if (cachedKartBodyName == null || cachedKartBodyName.trim().isEmpty()) {
             cachedKartBodyName = "UNKNOWN";
         }
-        if (cachedTireName == null || cachedTireName.isBlank()) {
+        if (cachedTireName == null || cachedTireName.trim().isEmpty()) {
             cachedTireName = "UNKNOWN";
         }
 
         logBody("§c[Body] 캡처 종료(완주 실패) : " + safeShow(cachedKartBodyName) + " | Tire=" + safeShow(cachedTireName));
+    }
+
+    // ✅ 공식 라이브러리를 활용한 안전한 색상 추출기
+    private static String extractColorHex(Text text) {
+        if (text == null) return "#FFFFFF";
+
+        // 1. 최상위 스타일에 색상이 지정된 경우
+        TextColor rootColor = text.getStyle().getColor();
+        if (rootColor != null) {
+            return String.format("#%06X", rootColor.getRgb());
+        }
+
+        // 2. 자식 노드(Siblings)에 색상이 지정된 경우 순회하며 탐색
+        for (Text sibling : text.getSiblings()) {
+            TextColor siblingColor = sibling.getStyle().getColor();
+            if (siblingColor != null) {
+                String content = sibling.getString().trim();
+                if (!content.isEmpty()) {
+                    return String.format("#%06X", siblingColor.getRgb());
+                }
+            }
+        }
+
+        return "#FFFFFF";
     }
 
     /** InGameHud render에서 매 프레임 호출해도 됨(active일 때만 내부에서 스캔) */
@@ -131,7 +165,7 @@ public final class BodyCaptureManager {
         if (now - lastBodyScanMs < BODY_SCAN_INTERVAL_MS) return;
         lastBodyScanMs = now;
 
-        // ✅ 0) 타이어는 매번 갱신 시도 (동시 감지)
+        // 0) 타이어는 매번 갱신 시도 (동시 감지)
         readTireNameAndCacheLast();
 
         // 1) 손 감지는 "항상" 먼저 갱신해둔다 (동시 감지)
@@ -140,22 +174,22 @@ public final class BodyCaptureManager {
 
         // 2) item_display customName 시도
         String displayName = readNearestItemDisplayCustomNameIfPresent();
-        if (displayName != null && !displayName.isBlank()) {
+        if (displayName != null && !displayName.trim().isEmpty()) {
             cachedKartBodyName = displayName;
-            logBody("§b[Body] ITEM_DISPLAY 감지: " + cachedKartBodyName);
+            logBody("§b[Body] ITEM_DISPLAY 감지: " + cachedKartBodyName + " (" + cachedKartColor + ")");
             return;
         }
 
         // 3) item_display가 null/빈값이면 "미리 캐싱된 손 값" 사용 (왼손 우선)
-        if (cachedOffhandName != null && !cachedOffhandName.isBlank()) {
+        if (cachedOffhandName != null && !cachedOffhandName.trim().isEmpty()) {
             cachedKartBodyName = cachedOffhandName;
-            logBody("§a[Body] OFFHAND fallback: " + cachedKartBodyName);
+            logBody("§a[Body] OFFHAND fallback: " + cachedKartBodyName + " (" + cachedKartColor + ")");
             return;
         }
 
-        if (cachedMainhandName != null && !cachedMainhandName.isBlank()) {
+        if (cachedMainhandName != null && !cachedMainhandName.trim().isEmpty()) {
             cachedKartBodyName = cachedMainhandName;
-            logBody("§e[Body] MAINHAND fallback: " + cachedKartBodyName);
+            logBody("§e[Body] MAINHAND fallback: " + cachedKartBodyName + " (" + cachedKartColor + ")");
         }
     }
 
@@ -232,8 +266,7 @@ public final class BodyCaptureManager {
             String name = safeItemName(custom.getString());
             if (name == null) return null;
 
-            // 🔥 추가 조건:
-            // 이름이 "mcrider-modelsaddle" 이면 무시하고 null 반환
+            // 추가 조건: 이름이 "mcrider-modelsaddle" 이면 무시하고 null 반환
             if (name.equalsIgnoreCase("mcrider-modelsaddle")) {
                 if (DebugLog.enabled()) {
                     DebugLog.chat("§7[Body] ItemDisplay 무시됨 (modelsaddle)");
@@ -241,12 +274,15 @@ public final class BodyCaptureManager {
                 return null; // 손 감지 fallback 사용하게 됨
             }
 
+            // ✅ 색상 추출 후 전역 변수(cachedKartColor)에 곧바로 저장
+            cachedKartColor = extractColorHex(custom);
+
             // 중복 로그 방지
             String key = nearest.getId() + "|" + name;
             if (!key.equals(lastItemDisplayKey)) {
                 lastItemDisplayKey = key;
                 if (DebugLog.enabled()) {
-                    DebugLog.chat("§7[Body] ItemDisplay raw=" + name);
+                    DebugLog.chat("§7[Body] ItemDisplay raw=" + name + " color=" + cachedKartColor);
                 }
             }
 
@@ -268,13 +304,18 @@ public final class BodyCaptureManager {
             String name = safeItemName(stack.getName().getString());
             if (name == null) return;
 
+            String colorHex = extractColorHex(stack.getName());
+
             String key = stack.getItem().toString() + "|" + name;
             if (key.equals(lastOffhandKey)) return;
 
             lastOffhandKey = key;
             cachedOffhandName = name;
 
-            if (DebugLog.enabled()) DebugLog.chat("§7[Body] Offhand raw=" + cachedOffhandName);
+            // ✅ 색상 추출 후 전역 변수(cachedKartColor)에 곧바로 저장
+            cachedKartColor = colorHex;
+
+            if (DebugLog.enabled()) DebugLog.chat("§7[Body] Offhand raw=" + cachedOffhandName + " color=" + cachedKartColor);
         } catch (Throwable ignored) {
             // ignore
         }
@@ -291,13 +332,18 @@ public final class BodyCaptureManager {
             String name = safeItemName(stack.getName().getString());
             if (name == null) return;
 
+            String colorHex = extractColorHex(stack.getName());
+
             String key = stack.getItem().toString() + "|" + name;
             if (key.equals(lastMainhandKey)) return;
 
             lastMainhandKey = key;
             cachedMainhandName = name;
 
-            if (DebugLog.enabled()) DebugLog.chat("§7[Body] Mainhand raw=" + cachedMainhandName);
+            // ✅ 색상 추출 후 전역 변수(cachedKartColor)에 곧바로 저장
+            cachedKartColor = colorHex;
+
+            if (DebugLog.enabled()) DebugLog.chat("§7[Body] Mainhand raw=" + cachedMainhandName + " color=" + cachedKartColor);
         } catch (Throwable ignored) {
             // ignore
         }

@@ -36,62 +36,99 @@ public class RiderFindScreen extends Screen {
         this.parent = parent;
     }
 
+    // 1. ESC 키를 눌렀을 때 parent 화면으로 돌아가도록 설정
+    @Override
+    public void close() {
+        if (this.client != null) {
+            this.client.setScreen(parent);
+        }
+    }
+
     @Override
     protected void init() {
+        boolean isSmall = this.width < 420;
         int cx = this.width / 2;
+        int bottomY = this.height - 28;
+        int iconBtnSize = 20;
+        int pageBtnGap = isSmall ? 40 : 60;  // 중앙 버튼과의 간격 조정
 
-        backBtn = ButtonWidget.builder(Text.literal("뒤로"), b -> {
-            if (this.client != null) this.client.setScreen(parent);
-        }).dimensions(OUTER_PAD + 8, this.height - 28, 70, 20).build();
+        // 2. 뒤로 가기 버튼 수정 (⏴ 기호, 툴팁 추가)
+        backBtn = ButtonWidget.builder(Text.literal("⏴"), b -> {
+                    playUiClick(); // 클릭 소리 추가 (선택사항)
+                    this.close();  // 위에서 정의한 close() 호출
+                })
+                .dimensions(OUTER_PAD, bottomY, iconBtnSize, 20)
+                .tooltip(net.minecraft.client.gui.tooltip.Tooltip.of(Text.literal("뒤로 가기")))
+                .build();
         addDrawableChild(backBtn);
 
+        // 3. 페이지 버튼 (간격 조정)
         prevBtn = ButtonWidget.builder(Text.literal("◀"), b -> {
             if (page > 0) page--;
             updateButtons();
-        }).dimensions(cx - 70, this.height - 28, 20, 20).build();
+        }).dimensions(cx - pageBtnGap - 10, this.height - 28, 20, 20).build();
         addDrawableChild(prevBtn);
 
         nextBtn = ButtonWidget.builder(Text.literal("▶"), b -> {
             if ((page + 1) * rowsPerPage < filtered.size()) page++;
             updateButtons();
-        }).dimensions(cx + 50, this.height - 28, 20, 20).build();
+        }).dimensions(cx + pageBtnGap - 10, this.height - 28, 20, 20).build();
         addDrawableChild(nextBtn);
 
-        refreshBtn = ButtonWidget.builder(Text.literal("새로 고침"), b -> {
-            loading = true;
-            error = null;
-            updateButtons();
+        // 4. 새로 고침 버튼 수정 (🔄 기호, 툴팁 추가, 너비 축소)
+        refreshBtn = ButtonWidget.builder(Text.literal("🔄"), b -> {
+                    loading = true;
+                    error = null;
+                    updateButtons();
 
-            RankingScreen.ApiCache.fetchAllAsync(true, p -> {
-                loading = false;
-                error = null;
-                rebuildPlayerList();
-                page = 0;
-                applyFilter();     //상태가 바뀐 시점에만 필터
-                updateButtons();
-            }, err -> {
-                loading = false;
-                error = err;
-                updateButtons();
-            });
-        }).dimensions(this.width - 92, this.height - 28, 80, 20).build();
+                    RankingScreen.ApiCache.fetchAllAsync(true, p -> {
+                        loading = false;
+                        error = null;
+                        rebuildPlayerList();
+                        page = 0;
+                        applyFilter();
+                        updateButtons();
+                    }, err -> {
+                        loading = false;
+                        error = err;
+                        updateButtons();
+                    });
+                })
+                .dimensions(this.width - iconBtnSize - OUTER_PAD, bottomY, iconBtnSize, 20)
+                .tooltip(net.minecraft.client.gui.tooltip.Tooltip.of(Text.literal("새로 고침")))
+                .build();
         addDrawableChild(refreshBtn);
 
+        // 검색창 및 초기 로직 (기존과 동일)
         input = new TextFieldWidget(this.textRenderer, cx - 150, 42, 300, 20, Text.literal(""));
         input.setMaxLength(32);
+
         input.setChangedListener(s -> {
+
             page = 0;
-            applyFilter();     //텍스트 변경 시에만 필터
+
+            applyFilter(); //텍스트 변경 시에만 필터
+
             updateButtons();
+
         });
+
         addSelectableChild(input);
+
         setInitialFocus(input);
 
-        // 초기 로드
         rebuildPlayerList();
+
         page = 0;
+
         applyFilter();
-        updateButtons();
+    }
+
+    // 클릭 소리를 위한 유틸리티 (필요시 추가)
+    private void playUiClick() {
+        if (this.client != null && this.client.getSoundManager() != null) {
+            this.client.getSoundManager().play(net.minecraft.client.sound.PositionedSoundInstance.master(net.minecraft.sound.SoundEvents.UI_BUTTON_CLICK, 1.0F));
+        }
     }
 
     //화면 크기에 따라 rowsPerPage 자동 계산
@@ -248,7 +285,13 @@ public class RiderFindScreen extends Screen {
             return;
         }
         if (error != null) {
-            context.drawCenteredTextWithShadow(textRenderer, "오류: " + error, width / 2, tableY + 26, 0xFF5555);
+            // error 문자열에 http가 포함되어 있다면 서비스 종료 안내 문구로 변경
+            String displayError = error;
+            if (error.toLowerCase().contains("http")) {
+                displayError = "이 버전은 서비스 종료 되었습니다. 최신 버전을 이용해 주세요.";
+            }
+
+            context.drawCenteredTextWithShadow(this.textRenderer, "오류: " + displayError, this.width / 2, tableY + 26, 0xFF5555);
             super.render(context, mouseX, mouseY, delta);
             return;
         }

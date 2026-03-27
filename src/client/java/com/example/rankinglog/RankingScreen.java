@@ -37,7 +37,7 @@ public class RankingScreen extends Screen {
     private ButtonWidget prevBtn;
     private ButtonWidget nextBtn;
 
-    // ✅ 필터 버튼(재배치)
+    // 필터 버튼(재배치)
     private ButtonWidget tireToggleBtn;
     private ButtonWidget engineToggleBtn;
     private ButtonWidget trackSelectBtn;
@@ -72,10 +72,10 @@ public class RankingScreen extends Screen {
     private static final int OUTER_PAD = 12;
     private static final int HEADER_TOP = 10;
 
-    // ✅ 버튼 컴팩트
+    // 버튼 컴팩트
     private static final int BTN_H = 18;
 
-    // ✅ 요청: 타이어/엔진/모드 버튼 너비를 "지금의 70%"로 (120 -> 84)
+    // 요청: 타이어/엔진/모드 버튼 너비를 "지금의 70%"로 (120 -> 84)
     private static final int BTN_W_SMALL = 84;
 
     private static final int BTN_W_TRACK = 110;
@@ -96,6 +96,8 @@ public class RankingScreen extends Screen {
     private int headerH = 70;
     private int rowsPerPage = 6;
 
+
+
     // 드롭다운 영역(클릭 판정용)
     private int tirePanelX, tirePanelY, tirePanelW, tirePanelH;
     private int enginePanelX, enginePanelY, enginePanelW, enginePanelH;
@@ -113,7 +115,7 @@ public class RankingScreen extends Screen {
     private final List<BodyHit> bodyHits = new ArrayList<>();
 
     public static final String GAS_URL =
-            "https://script.google.com/macros/s/AKfycbzdrUnaArFkn2DUIx0mxmp9peLBKQYb7YX8wEZxwMVodX4V1NUh-plQ-6jSDI3xnzEw/exec";
+            "https://script.google.com/macros/s/AKfycbyDiMWUQr-5mL0QEs45pYEBGX3CtEUD1Uhwm5YA5ePyyKHrV2pcRYOQBUHARr0X1rJY/exec";
 
     public RankingScreen(String track) {
         super(Text.literal("랭킹"));
@@ -127,47 +129,63 @@ public class RankingScreen extends Screen {
 
     @Override
     protected void init() {
-        int cx = this.width / 2;
+        int iconBtnSize = 20;
 
-        // 페이지 버튼(아래 중앙)
+        int cx = this.width / 2;
+        // 화면 너비에 따른 가변 설정
+        boolean isSmall = this.width < 420;
+        int bottomBtnW = isSmall ? 65 : 80; // 화면이 작으면 버튼 너비 축소
+        int pageBtnGap = isSmall ? 40 : 60;  // 중앙 버튼과의 간격 조정
+
+        // 1. 페이지 버튼 (중앙 하단)
         prevBtn = ButtonWidget.builder(Text.literal("◀"), b -> {
-            playUiClick();
-            if (page > 0) page--;
-            updateButtons();
-        }).dimensions(cx - 70, this.height - 28, 20, 20).build();
+            playUiClick(); if (page > 0) page--; updateButtons();
+        }).dimensions(cx - pageBtnGap - 10, this.height - 28, 20, 20).build();
 
         nextBtn = ButtonWidget.builder(Text.literal("▶"), b -> {
-            playUiClick();
-            if ((page + 1) * rowsPerPage < filtered.size()) page++;
-            updateButtons();
-        }).dimensions(cx + 50, this.height - 28, 20, 20).build();
+            playUiClick(); if ((page + 1) * rowsPerPage < filtered.size()) page++; updateButtons();
+        }).dimensions(cx + pageBtnGap - 10, this.height - 28, 20, 20).build();
 
         addDrawableChild(prevBtn);
         addDrawableChild(nextBtn);
 
-        //왼쪽 하단: 라이더 찾기
-        //왼쪽 하단 라이더 찾기
-        ButtonWidget riderFindBtn = ButtonWidget.builder(Text.literal("라이더 찾기"), b -> {
-            playUiClick();
-            if (this.client != null) {
-                this.client.setScreen(new RiderFindScreen(this));
-            }
-        }).dimensions(OUTER_PAD + 8, this.height - 28, 90, 20).build();
-        addDrawableChild(riderFindBtn);
+// 2. 왼쪽 기능 버튼 (기호: 🔍, 툴팁: 라이더 찾기)
+        addDrawableChild(ButtonWidget.builder(Text.literal("🔍"), b -> {
+                    playUiClick();
+                    if (this.client != null) this.client.setScreen(new RiderFindScreen(this));
+                })
+                .dimensions(OUTER_PAD, this.height - 28, iconBtnSize, 20)
+                .tooltip(net.minecraft.client.gui.tooltip.Tooltip.of(Text.literal("라이더 찾기")))
+                .build());
 
-        // ✅ 버튼 줄(위치: renderHeader에서 매프레임 갱신)
-        int btnY = HEADER_TOP + 44;
+// 뒤로 가기 버튼 (기호: ⏴, 툴팁: 뒤로 가기)
+        addDrawableChild(ButtonWidget.builder(Text.literal("⏴"), b -> {
+                    playUiClick();
+                    if (this.client != null) this.client.setScreen(new MainMenuScreen());
+                })
+                .dimensions(this.width - (iconBtnSize * 2) - OUTER_PAD - 5, this.height - 28, iconBtnSize, 20)
+                .tooltip(net.minecraft.client.gui.tooltip.Tooltip.of(Text.literal("뒤로 가기")))
+                .build());
 
-        // 좌측(타이어)
-        int leftX = OUTER_PAD + 8;
+// 새로 고침 버튼 (기호: 🔄, 툴팁: 새로 고침)
+        addDrawableChild(ButtonWidget.builder(Text.literal("🔄"), b -> {
+                    playUiClick();
+                    loading = true;
+                    ApiCache.fetchAllAsync(true, p -> {
+                        loading = false;
+                        applyFromAllPayload();
+                    }, err -> {
+                        loading = false;
+                        error = err;
+                    });
+                })
+                .dimensions(this.width - iconBtnSize - OUTER_PAD, this.height - 28, iconBtnSize, 20)
+                .tooltip(net.minecraft.client.gui.tooltip.Tooltip.of(Text.literal("새로 고침")))
+                .build());
 
-        // 중앙(트랙)
-        int trackX = cx - (BTN_W_TRACK / 2);
-
-        // 우측(엔진+모드 같이, 같은 y축)
-        int engineX = this.width - OUTER_PAD - 8 - (BTN_W_SMALL * 2 + BTN_GAP);
-        int modeX = engineX + BTN_W_SMALL + BTN_GAP;
-
+        // --- 상단 필터 버튼들은 renderHeader에서 위치가 재계산되므로 기본 생성만 수행 ---
+        int btnY = HEADER_TOP + 48;
+// 1. 타이어 필터 버튼
         tireToggleBtn = ButtonWidget.builder(getTireToggleText(), b -> {
             playUiClick();
             tirePanelOpen = !tirePanelOpen;
@@ -179,17 +197,17 @@ public class RankingScreen extends Screen {
             if (engineToggleBtn != null) engineToggleBtn.setMessage(getEngineToggleText());
             if (modeToggleBtn != null) modeToggleBtn.setMessage(getModeToggleText());
             updateButtons();
-        }).dimensions(leftX, btnY, BTN_W_SMALL, BTN_H).build();
-        addDrawableChild(tireToggleBtn);
+        }).dimensions(0, btnY, BTN_W_SMALL, BTN_H).build(); //
 
+// 2. 트랙 선택 버튼
         trackSelectBtn = ButtonWidget.builder(Text.literal("트랙 선택"), b -> {
             playUiClick();
             if (this.client != null) {
                 this.client.setScreen(new TrackSelectScreen(this, this.track, this::setTrackAndApplyFromCache));
             }
-        }).dimensions(trackX, btnY, BTN_W_TRACK, BTN_H).build();
-        addDrawableChild(trackSelectBtn);
+        }).dimensions(0, btnY, BTN_W_TRACK, BTN_H).build(); //
 
+// 3. 엔진 필터 버튼
         engineToggleBtn = ButtonWidget.builder(getEngineToggleText(), b -> {
             playUiClick();
             enginePanelOpen = !enginePanelOpen;
@@ -202,9 +220,9 @@ public class RankingScreen extends Screen {
             if (modeToggleBtn != null) modeToggleBtn.setMessage(getModeToggleText());
             if (tireToggleBtn != null) tireToggleBtn.setMessage(getTireToggleText());
             updateButtons();
-        }).dimensions(engineX, btnY, BTN_W_SMALL, BTN_H).build();
-        addDrawableChild(engineToggleBtn);
+        }).dimensions(0, btnY, BTN_W_SMALL, BTN_H).build(); //
 
+// 4. 모드 필터 버튼
         modeToggleBtn = ButtonWidget.builder(getModeToggleText(), b -> {
             playUiClick();
             modePanelOpen = !modePanelOpen;
@@ -216,24 +234,12 @@ public class RankingScreen extends Screen {
             if (engineToggleBtn != null) engineToggleBtn.setMessage(getEngineToggleText());
             if (tireToggleBtn != null) tireToggleBtn.setMessage(getTireToggleText());
             updateButtons();
-        }).dimensions(modeX, btnY, BTN_W_SMALL, BTN_H).build();
+        }).dimensions(0, btnY, BTN_W_SMALL, BTN_H).build(); //
+
+        addDrawableChild(tireToggleBtn);
+        addDrawableChild(trackSelectBtn);
+        addDrawableChild(engineToggleBtn);
         addDrawableChild(modeToggleBtn);
-
-        ButtonWidget refreshBtn = ButtonWidget.builder(Text.literal("새로 고침"), b -> {
-            playUiClick();
-            loading = true;
-            error = null;
-
-            ApiCache.fetchAllAsync(true, p -> {
-                loading = false;
-                error = null;
-                applyFromAllPayload();
-            }, err -> {
-                loading = false;
-                error = err;
-            });
-        }).dimensions(this.width - 92, this.height - 28, 80, 20).build();
-        addDrawableChild(refreshBtn);
 
         // 캐시 로드
         if (ApiCache.isAllReady()) {
@@ -253,7 +259,6 @@ public class RankingScreen extends Screen {
                 error = err;
             });
         }
-
         updateButtons();
     }
 
@@ -369,7 +374,7 @@ public class RankingScreen extends Screen {
         ranking.addAll(payload.ranking);
         if (payload.engines != null) engines.addAll(payload.engines);
 
-        // ✅ tire list는 entry에서 수집
+        // tire list는 entry에서 수집
         LinkedHashSet<String> tireSet = new LinkedHashSet<>();
         tireSet.add("ALL");
         for (Entry e : ranking) {
@@ -531,6 +536,8 @@ public class RankingScreen extends Screen {
         int w = this.width - OUTER_PAD * 2;
         int h = headerH;
 
+
+
         context.fill(x, y, x + w, y + h, 0xCC000000);
         drawRectBorder(context, x, y, w, h, 0xFF2A2A2A);
 
@@ -546,19 +553,23 @@ public class RankingScreen extends Screen {
                 "타이어: " + tire + "   |   엔진: " + eng + "   |   모드: " + mode,
                 this.width / 2, y + 38, 0xBBBBBB);
 
-        // ✅ 버튼 배치 갱신
+        // 버튼 배치 갱신
         int btnY = y + 48;
         int cx = this.width / 2;
 
-        int leftX = OUTER_PAD + 8;
-        int trackX = cx - (BTN_W_TRACK / 2);
+        int gap = (this.width < 400) ? 4 : BTN_GAP;
+        int totalBtnsW = (BTN_W_SMALL * 3) + BTN_W_TRACK + (gap * 3);
+        int startX = cx - (totalBtnsW / 2); // 시작점을 중앙 기준으로 계산
 
-        int engineX = this.width - OUTER_PAD - 8 - (BTN_W_SMALL * 2 + BTN_GAP);
-        int modeX = engineX + BTN_W_SMALL + BTN_GAP;
+        if (tireToggleBtn != null) tireToggleBtn.setPosition(startX, btnY);
 
-        if (tireToggleBtn != null) tireToggleBtn.setPosition(leftX, btnY);
+        int trackX = startX + BTN_W_SMALL + gap;
         if (trackSelectBtn != null) trackSelectBtn.setPosition(trackX, btnY);
+
+        int engineX = trackX + BTN_W_TRACK + gap;
         if (engineToggleBtn != null) engineToggleBtn.setPosition(engineX, btnY);
+
+        int modeX = engineX + BTN_W_SMALL + gap;
         if (modeToggleBtn != null) modeToggleBtn.setPosition(modeX, btnY);
 
         if (tirePanelOpen && tireToggleBtn != null) drawActiveButtonGlow(context, tireToggleBtn);
@@ -603,7 +614,7 @@ public class RankingScreen extends Screen {
         if (engineScroll > maxScroll) engineScroll = maxScroll;
     }
 
-    // ✅ 타이어 드롭다운(스크롤 필요 거의 없어서 단순)
+    // 타이어 드롭다운(스크롤 필요 거의 없어서 단순)
     private void renderTireDropdown(DrawContext context, int mouseX, int mouseY) {
         if (tireToggleBtn == null) return;
 
@@ -781,6 +792,13 @@ public class RankingScreen extends Screen {
         context.fill(x + w - 1, y, x + w, y + h, color);
     }
 
+    @Override
+    public void close() {
+        // ESC를 누르거나 화면이 닫힐 때 메인 메뉴 화면으로 이동
+        if (this.client != null) {
+            this.client.setScreen(new MainMenuScreen());
+        }
+    }
     // =========================
     //스크롤 처리(엔진 리스트)
     // =========================
@@ -911,12 +929,13 @@ public class RankingScreen extends Screen {
             return true;
         }
 
-        //플레이어 이름 클릭 -> 프로필 화면
+//플레이어 이름 클릭 -> 프로필 화면
         if (!loading && error == null && !filtered.isEmpty()) {
             computeLayout();
 
             int tableTop = HEADER_TOP + headerH + 10;
             int tableX = OUTER_PAD + 8;
+            int tableW = this.width - (OUTER_PAD + 8) * 2; //비율 계산을 위해 추가
 
             int startY = tableTop + 24;
             int rowH = 18;
@@ -929,7 +948,7 @@ public class RankingScreen extends Screen {
                 int idxInPage = (i - start);
                 int playerY = startY + idxInPage * rowH;
 
-                int playerX = tableX + 86;
+                int playerX = tableX + (int)(tableW * 0.15); //비율(0.15) 적용으로 변경
                 int playerW = this.textRenderer.getWidth(e.player());
                 int playerH = 9;
 
@@ -969,13 +988,31 @@ public class RankingScreen extends Screen {
         int tableBottom = this.height - 46;
         int tableH = Math.max(80, tableBottom - tableTop);
 
+// ===== 반응형 컬럼 위치 =====
+        int colRankX   = tableX + (int)(tableW * 0.02);
+        int colPlayerX = tableX + (int)(tableW * 0.15);
+        int colTimeX   = tableX + (int)(tableW * 0.40);
+        int colBodyX   = tableX + (int)(tableW * 0.60);
+        int colEngineX = tableX + (int)(tableW * 0.85);
+
+        // ===== 화면 크기에 따른 컬럼 표시 임계값 =====
+        boolean showTime   = tableW > 250;
+        boolean showBody   = tableW > 320;
+        boolean showEngine = tableW > 380;
+
         if (loading) {
             context.drawCenteredTextWithShadow(this.textRenderer, "불러오는 중...", this.width / 2, tableTop + 26, 0xFFFFFF);
             super.render(context, mouseX, mouseY, delta);
             return;
         }
         if (error != null) {
-            context.drawCenteredTextWithShadow(this.textRenderer, "오류: " + error, this.width / 2, tableTop + 26, 0xFF5555);
+            // error 문자열에 http가 포함되어 있다면 서비스 종료 안내 문구로 변경
+            String displayError = error;
+            if (error.toLowerCase().contains("http")) {
+                displayError = "이 버전은 서비스 종료 되었습니다. 최신 버전을 이용해 주세요.";
+            }
+
+            context.drawCenteredTextWithShadow(this.textRenderer, "오류: " + displayError, this.width / 2, tableTop + 26, 0xFF5555);
             super.render(context, mouseX, mouseY, delta);
             return;
         }
@@ -996,11 +1033,16 @@ public class RankingScreen extends Screen {
 
         // 컬럼 헤더
         int headerRowY = tableTop + 8;
-        context.drawTextWithShadow(this.textRenderer, "순위", tableX + 16, headerRowY, 0xDDDDDD);
-        context.drawTextWithShadow(this.textRenderer, "플레이어", tableX + 86, headerRowY, 0xDDDDDD);
-        context.drawTextWithShadow(this.textRenderer, "기록", tableX + 276, headerRowY, 0xDDDDDD);
-        context.drawTextWithShadow(this.textRenderer, "카트바디", tableX + 388, headerRowY, 0xDDDDDD);
-        context.drawTextWithShadow(this.textRenderer, "엔진", tableX + tableW - 66, headerRowY, 0xDDDDDD);
+        context.drawTextWithShadow(this.textRenderer, "순위", colRankX, headerRowY, 0xDDDDDD);
+        context.drawTextWithShadow(this.textRenderer, "플레이어", colPlayerX, headerRowY, 0xDDDDDD);
+        if (showTime)
+            context.drawTextWithShadow(this.textRenderer, "기록", colTimeX, headerRowY, 0xDDDDDD);
+
+        if (showBody)
+            context.drawTextWithShadow(this.textRenderer, "카트바디", colBodyX, headerRowY, 0xDDDDDD);
+
+        if (showEngine)
+            context.drawTextWithShadow(this.textRenderer, "엔진", colEngineX, headerRowY, 0xDDDDDD);
 
         int startY = tableTop + 24;
         int rowH = 18;
@@ -1035,12 +1077,11 @@ public class RankingScreen extends Screen {
                                     (rank == 3) ? 0xFFFFB36B :
                                             0xFFFFFFFF;
 
-            context.drawTextWithShadow(this.textRenderer, rank + "위", tableX + 16, y, rankColor);
+            context.drawTextWithShadow(this.textRenderer, rank + "위", colRankX, y, rankColor);
 
-            int playerX = tableX + 86;
             int playerW = this.textRenderer.getWidth(e.player());
             boolean hoverPlayer =
-                    mouseX >= playerX && mouseX <= playerX + playerW &&
+                    mouseX >= colPlayerX && mouseX <= colPlayerX + playerW &&
                             mouseY >= y - 2 && mouseY <= y - 2 + 9 + 6;
 
             if (hoverPlayer) {
@@ -1048,25 +1089,50 @@ public class RankingScreen extends Screen {
                 hoverOnPlayerName = true;
             }
 
+            boolean hiddenSomething = false;
+
             int playerColor = hoverPlayer ? 0xFFFFEE88 : 0xFFFFFF;
 
-            context.drawTextWithShadow(this.textRenderer, e.player(), playerX, y, playerColor);
-            context.drawTextWithShadow(this.textRenderer, e.timeStr(), tableX + 276, y, 0xFFFFFF);
+            context.drawTextWithShadow(this.textRenderer, e.player(), colPlayerX, y, playerColor);
+            if (showTime) {
+                context.drawTextWithShadow(this.textRenderer, e.timeStr(), colTimeX, y, 0xFFFFFF);
+            } else {
+                hiddenSomething = true;
+            }
 
-            // ✅ 바디 + 타이어 기호 + hover tooltip
-            int bodyX = tableX + 388;
+            // 바디 + 타이어 기호 + hover tooltip
             int bodyW = this.textRenderer.getWidth(bodyLabel);
-            BodyHit bh = new BodyHit(bodyX, y - 2, bodyX + bodyW, y + 10, e.tireName());
+            BodyHit bh = new BodyHit(colBodyX, y - 2, colBodyX + bodyW, y + 10, e.tireName());
             bodyHits.add(bh);
             if (bh.hit(mouseX, mouseY)) {
                 hoveredTireTooltip = TireUtil.tooltipName(e.tireName());
             }
-            context.drawTextWithShadow(this.textRenderer, bodyLabel, bodyX, y, 0xFFFFFF);
+            if (showBody) {
+                context.drawTextWithShadow(this.textRenderer, bodyLabel, colBodyX, y, 0xFFFFFF);
+            } else {
+                hiddenSomething = true;
+            }
 
-            context.drawTextWithShadow(this.textRenderer, eng, tableX + tableW - 66, y, 0xFFFFFF);
+            if (showEngine) {
+                context.drawTextWithShadow(this.textRenderer, eng, colEngineX, y, 0xFFFFFF);
+            } else {
+                hiddenSomething = true;
+            }
+
+            if (hiddenSomething) {
+                context.drawTextWithShadow(
+                        this.textRenderer,
+                        "+",
+                        tableX + tableW - 20,
+                        y,
+                        0xAAAAAA
+                );
+            }
+
+
         }
 
-        // ✅ 툴팁 우선순위: 타이어(바디 hover) > 기존 등록/프로필 안내
+        // 툴팁 우선순위: 타이어(바디 hover) > 기존 등록/프로필 안내
         if (hoveredTireTooltip != null) {
             drawTooltipBox(context, mouseX, mouseY, hoveredTireTooltip);
         } else if (hoveredEntry != null) {
@@ -1092,7 +1158,7 @@ public class RankingScreen extends Screen {
         return false;
     }
 
-    // ✅ tireName 추가
+    // tireName 추가
     public record Entry(String player, String timeStr, long timeMillis,
                                String engineName, String bodyName, String tireName, String modes,
                                long submittedAtMs) {}
@@ -1131,7 +1197,7 @@ public class RankingScreen extends Screen {
         private static volatile boolean fetching = false;
         private static final List<Runnable> waiters = new ArrayList<>();
 
-        private static final long TTL_MS = 10 * 60_000;
+        private static final long TTL_MS = 1 * 60_000;
 
         public static boolean isAllReady() {
             return getAllIfReady() != null;

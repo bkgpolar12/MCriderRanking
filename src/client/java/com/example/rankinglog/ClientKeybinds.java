@@ -33,13 +33,13 @@ public class ClientKeybinds {
                 "category.rankinglog"
         ));
 
-        OPEN_SETTINGS_KEY = KeyBindingHelper.registerKeyBinding(
-                new KeyBinding(
-                        "key.mcrider_ranking.open_settings",
-                        GLFW.GLFW_KEY_F8,
-                        "category.rankinglog"
-                )
-        );
+//        OPEN_SETTINGS_KEY = KeyBindingHelper.registerKeyBinding(
+//                new KeyBinding(
+//                        "key.mcrider_ranking.open_settings",
+//                        GLFW.GLFW_KEY_F8,
+//                        "category.rankinglog"
+//                )
+//        );
 
         //U 키 등록
 //        DEBUG_NEAREST_ITEM_DISPLAY_KEY = KeyBindingHelper.registerKeyBinding(new KeyBinding(
@@ -51,11 +51,11 @@ public class ClientKeybinds {
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             while (OPEN_RANKING.wasPressed()) {
-                openRankingWithPrepare();
+                openMainMenu();
             }
-            while (OPEN_SETTINGS_KEY.wasPressed()) {
-                openSettingsScreen();
-            }
+//            while (OPEN_SETTINGS_KEY.wasPressed()) {
+//                openSettingsScreen();
+//            }
 //            while (DEBUG_NEAREST_ITEM_DISPLAY_KEY.wasPressed()) {
 //                debugPrintNearestItemDisplayCustomName();
 //            }
@@ -150,6 +150,17 @@ public class ClientKeybinds {
 
         //1) 화면을 즉시 연다 (UX)
         client.send(() -> client.setScreen(new RankingScreen(finalTrack)));
+
+        //2) 동시에 "전체 데이터(getAll)"를 한번에 준비한다
+        RankingScreen.ApiCache.fetchAllAsync(false, p -> {}, err -> {});
+    }
+
+    private static void openMainMenu() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.player == null) return;
+
+        //1) 화면을 즉시 연다 (UX)
+        client.send(() -> client.setScreen(new MainMenuScreen()));
 
         //2) 동시에 "전체 데이터(getAll)"를 한번에 준비한다
         RankingScreen.ApiCache.fetchAllAsync(false, p -> {}, err -> {});

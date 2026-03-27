@@ -23,10 +23,13 @@ public class AutoSubmitter {
         if (now - prev < MIN_INTERVAL_MS) return;
         lastSubmitAt.set(now);
 
+        // ✅ 캐싱된 카트 색상을 가져옵니다.
+        String bodyColor = BodyCaptureManager.getCachedKartColorOrHex();
+
         CompletableFuture
                 .supplyAsync(() -> {
-                    // ✅ AddRankingScreen.submitRecord(...)도 tireName을 받도록 같이 수정해야 함 (아래 참고)
-                    return AddRankingScreen.submitRecord(player, track, timeStr, timeMillis, engineName, bodyName, tireName, modesCsv);
+                    // ✅ AddRankingScreen.submitRecord에 bodyColor 매개변수 추가
+                    return AddRankingScreen.submitRecord(player, track, timeStr, timeMillis, engineName, bodyName, bodyColor, tireName, modesCsv);
                 }, Util.getIoWorkerExecutor())
                 .exceptionally(ex -> {
                     ex.printStackTrace();
@@ -43,7 +46,7 @@ public class AutoSubmitter {
                         boolean ok = res != null && res.has("ok") && res.get("ok").getAsBoolean();
                         if (ok) {
                             client.player.sendMessage(
-                                    Text.literal("§a[MCRiderRanking] 등록 성공: " + track + " / " + timeStr + " / " + engineName),
+                                    Text.literal("§a[MCRiderRanking] 등록 성공: " + track + " / " + timeStr + " / " + bodyName + " / " + engineName),
                                     false
                             );
                         } else {

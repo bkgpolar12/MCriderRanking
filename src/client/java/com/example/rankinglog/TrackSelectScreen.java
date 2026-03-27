@@ -236,7 +236,13 @@ public class TrackSelectScreen extends Screen {
             return;
         }
         if (error != null) {
-            context.drawCenteredTextWithShadow(this.textRenderer, "오류: " + error, cx, listTop + 24, 0xFF5555);
+            // error 문자열에 http가 포함되어 있다면 서비스 종료 안내 문구로 변경
+            String displayError = error;
+            if (error.toLowerCase().contains("http")) {
+                displayError = "이 버전은 서비스 종료 되었습니다. 최신 버전을 이용해 주세요.";
+            }
+
+            context.drawCenteredTextWithShadow(this.textRenderer, "오류: " + displayError, cx, listTop + 24, 0xFF5555);
             super.render(context, mouseX, mouseY, delta);
             return;
         }

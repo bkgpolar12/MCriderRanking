@@ -93,7 +93,7 @@ public class ModSettingsScreen extends Screen {
 
         context.drawCenteredTextWithShadow(
                 this.textRenderer,
-                Text.literal("버전 : " + getModVersion()),
+                Text.literal("V" + getModVersion()),
                 this.width / 2,
                 40,
                 0xAAAAAA

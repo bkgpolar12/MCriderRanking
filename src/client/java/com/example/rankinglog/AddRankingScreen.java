@@ -91,7 +91,8 @@ public class AddRankingScreen extends Screen {
                         try {
                             // 예시: 엔진 이름(너 프로젝트에서 실제 값으로 교체 가능)
                             String engineName = "[X]";
-                            String bodyName = "테스트";
+                            String bodyName = BodyCaptureManager.getCachedKartBodyNameOrUnknown(); // 바디 이름
+                            String bodyColor = BodyCaptureManager.getCachedKartColorOrHex();       // ✅ 바디 색상
                             int engine = 0;
                             String modesCsv = "없음";
                             String tireName = "레이싱 타이어";
@@ -113,8 +114,8 @@ public class AddRankingScreen extends Screen {
                                 return;
                             }
 
-                            // 2) 등록
-                            JsonObject submitRes = submitRecord(player, track, timeStr, newTimeMillis, engineName, bodyName, tireName, modesCsv);
+                            // 2) 등록 (✅ bodyColor 파라미터 추가)
+                            JsonObject submitRes = submitRecord(player, track, timeStr, newTimeMillis, engineName, bodyName, bodyColor, tireName, modesCsv);
 
                             boolean ok = submitRes.has("ok") && submitRes.get("ok").getAsBoolean();
                             if (!ok) {
@@ -334,9 +335,6 @@ public class AddRankingScreen extends Screen {
         }
     }
 
-
-
-
     public static Long checkBestRecord(String player, String track, String engineName) {
         try {
             // 너 코드에서 여기 JSON이 깨져있던 부분(따옴표/줄바꿈) 고침
@@ -363,14 +361,11 @@ public class AddRankingScreen extends Screen {
         }
     }
 
-    // (예시 시그니처)
+    // ✅ 매개변수에 bodyColor 추가 및 JSON 포맷팅에 반영
     public static JsonObject submitRecord(String player, String track, String timeStr, long timeMillis,
-                                          String engineName, String bodyName, String tireName, String modesCsv)
-        // JSON body에 tireName 추가:
-        // "tireName": tireName
-
- {
-     String json = String.format("""
+                                          String engineName, String bodyName, String bodyColor, String tireName, String modesCsv)
+    {
+        String json = String.format("""
 {
   "action": "submit",
   "player": "%s",
@@ -380,16 +375,15 @@ public class AddRankingScreen extends Screen {
   "engine": %d,
   "engineName": "%s",
   "bodyName": "%s",
+  "bodyColor": "%s",
   "modes": "%s",
   "tire": "%s"
 }
 """,
-             player, track, timeStr, timeMillis, 0,
-             engineName, bodyName,
-             modesCsv, tireName
-     );
-
-
+                player, track, timeStr, timeMillis, 0,
+                engineName, bodyName, bodyColor, // ✅ 색상 데이터 매핑
+                modesCsv, tireName
+        );
 
         try {
             // 정상적으로 JSON 응답을 받으면 그대로 반환
@@ -407,6 +401,5 @@ public class AddRankingScreen extends Screen {
             return maybe;
         }
     }
-
 
 }

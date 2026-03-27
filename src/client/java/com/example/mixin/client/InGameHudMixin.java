@@ -26,6 +26,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 @Mixin(InGameHud.class)
@@ -293,7 +294,7 @@ public class InGameHudMixin {
 					boolean sameTimeAsLast = (lastSoloFailTimeStr != null && lastSoloFailTimeStr.equals(s));
 					boolean inCooldown = (now - lastSoloFailMsgMs) < SOLO_FAIL_COOLDOWN_MS;
 
-					if (!sameTimeAsLast && !inCooldown) {
+					if (!sameTimeAsLast && !inCooldown && ModConfig.get().autoSubmitEnabled) return; {
 						client.player.sendMessage(Text.literal("플레이어가 최대 1명이어야 기록이 등록됩니다."), false);
 						lastSoloFailTimeStr = s;
 						lastSoloFailMsgMs = now;
@@ -434,47 +435,75 @@ public class InGameHudMixin {
 	}
 
 	@Unique
+	private static final Set<String> ALLOWED_PLAYERS = Set.of(
+			"BKGpolar"
+	);
+
+	@Unique
+	private static boolean isAllowedPlayer() {
+		MinecraftClient client = MinecraftClient.getInstance();
+		if (client.player == null) return false;
+
+		String name = client.player.getGameProfile().getName();
+
+		return ALLOWED_PLAYERS.contains(name);
+	}
+
+	@Unique
+	private static final boolean USE_PLAYER_LIMIT = false; //개발자 전용 또는 CBT (false = 배포용)
+
+	@Unique
 	private static boolean isAllowedServer() {
 		MinecraftClient client = MinecraftClient.getInstance();
 		var me = client.player;
 
-		String key;
-
+		// 1. 싱글 플레이어 체크
 		if (client.getServer() != null) {
-			key = "single";
-			showServerDebugOnce(key, "§e[MCRiderRanking] 통합 서버(싱글플레이) 감지 -> 자동 기록 비활성화");
+			showServerDebugOnce("single", "§e[MCRiderRanking] 통합 서버(싱글플레이) 감지 -> 자동 기록 비활성화");
 			return false;
 		}
 
+		// 2. 서버 정보 존재 여부 체크
 		ServerInfo info = client.getCurrentServerEntry();
 		if (info == null || info.address == null) {
-			key = "none";
-			showServerDebugOnce(key, "§c[MCRiderRanking] 서버 정보 없음 (접속 전/나가는 중/로딩 중)");
+			showServerDebugOnce("none", "§c[MCRiderRanking] 서버 정보 없음 (접속 전/나가는 중/로딩 중)");
 			return false;
 		}
 
 		String addr = info.address.trim().toLowerCase();
-		key = "multi:" + addr;
-
 		String allowed = ALLOWED_ADDRESS.trim().toLowerCase();
 		String devserver = ALLOWED_ADDRESS1.trim().toLowerCase();
 
-		boolean ok = addr.equals(allowed); // -- 개발섭 || addr.equals(devserver)
+		boolean ok = addr.equals(allowed) || (USE_PLAYER_LIMIT && addr.equals(devserver));
 
-		showServerDebugOnce(
-				key,
-				"§a[MCRiderRanking] " + (ok ? "자동 기록 활성화" : "자동 기록 비활성화")
-		);
+		// 3. 허용되지 않은 서버인 경우
+		if (!ok) {
+			String key = "multi_fail:" + addr;
 
-		if (me != null && isNewKey(key)) {
-			boolean addrHasPort = addr.contains(":");
-			boolean allowedHasPort = allowed.contains(":");
-			if (!ok && addrHasPort != allowedHasPort) {
-				DebugLog.chat("§e[MCRiderRanking] 포트 포함 여부가 달라서 불일치일 수 있음");
+			if (me != null && isNewKey(key)) {
+				boolean addrHasPort = addr.contains(":");
+				boolean allowedHasPort = allowed.contains(":");
+				if (addrHasPort != allowedHasPort) {
+					DebugLog.chat("§e[MCRiderRanking] 포트 포함 여부가 달라서 불일치일 수 있음");
+				}
+			}
+
+			showServerDebugOnce(key, "§c[MCRiderRanking] 자동 기록 비활성화 (허용되지 않은 서버)");
+			return false;
+		}
+
+		// 4. 플레이어 제한 체크 (CBT 모드 전용 로직)
+		if (USE_PLAYER_LIMIT) {
+			boolean playerOk = isAllowedPlayer();
+			if (!playerOk) {
+				showServerDebugOnce("blocked_player", "§c[MCRiderRanking] 권한이 없는 플레이어입니다. (자동 기록 비활성화)");
+				return false;
 			}
 		}
 
-		return ok;
+		// 5. 서버도 맞고, (제한이 꺼져있거나 권한이 있는) 경우 최종 성공
+		showServerDebugOnce("multi_ok:" + addr, "§a[MCRiderRanking] 자동 기록 활성화");
+		return true;
 	}
 
 	@Unique

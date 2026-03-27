@@ -69,47 +69,76 @@ public class PlayerProfileScreen extends Screen {
         this.parent = parent;
     }
 
+
+    // 1. ESC 키 및 화면 닫기 시 parent로 돌아가도록 설정
+    @Override
+    public void close() {
+        if (this.client != null) {
+            this.client.setScreen(parent);
+        }
+    }
+
     @Override
     protected void init() {
+        boolean isSmall = this.width < 420;
+        int pageBtnGap = isSmall ? 40 : 60;  // 중앙 버튼과의 간격 조정
         int y = this.height - 28;
+        int cx = this.width / 2;
+        int iconBtnSize = 20;
+        int gap = 5;
 
-        ButtonWidget backBtn = ButtonWidget.builder(Text.literal("뒤로"), b -> {
-            if (this.client != null) this.client.setScreen(parent);
-        }).dimensions(OUTER_PAD + 8, y, 70, BTN_H).build();
-        addDrawableChild(backBtn);
+        // 1. 뒤로 가기 버튼 (왼쪽 하단 끝)
+        // 기호: ⏴, 툴팁: 뒤로 가기, 크기: 20x20
+        addDrawableChild(ButtonWidget.builder(Text.literal("⏴"), b -> {
+                    this.close(); // 아래 정의된 close()를 호출하여 parent로 이동
+                })
+                .dimensions(OUTER_PAD, y, iconBtnSize, 20)
+                .tooltip(net.minecraft.client.gui.tooltip.Tooltip.of(Text.literal("뒤로 가기")))
+                .build());
 
+        // 2. 페이지 이전 버튼 (중앙 좌측)
         prevBtn = ButtonWidget.builder(Text.literal("◀"), b -> {
-            if (page > 0) page--;
-            updateButtons();
-        }).dimensions(this.width / 2 - 60, y, 20, BTN_H).build();
+                    if (page > 0) page--;
+                    updateButtons();
+                })
+                .dimensions(cx - pageBtnGap - 10, this.height - 28, 20, 20)
+                .build();
         addDrawableChild(prevBtn);
 
+        // 3. 페이지 다음 버튼 (중앙 우측)
         nextBtn = ButtonWidget.builder(Text.literal("▶"), b -> {
-            if ((page + 1) * rowsPerPage < records.size()) page++;
-            updateButtons();
-        }).dimensions(this.width / 2 + 40, y, 20, BTN_H).build();
+                    if ((page + 1) * rowsPerPage < records.size()) page++;
+                    updateButtons();
+                })
+                .dimensions(cx + pageBtnGap - 10, this.height - 28, 20, 20)
+                .build();
         addDrawableChild(nextBtn);
 
-        ButtonWidget refreshBtn = ButtonWidget.builder(Text.literal("새로 고침"), b -> {
-            loading = true;
-            error = null;
-            records.clear();
-            page = 0;
-            updateButtons();
+        // 4. 새로 고침 버튼 (오른쪽 하단 끝)
+        // 기호: 🔄, 툴팁: 새로 고침, 크기: 20x20
+        addDrawableChild(ButtonWidget.builder(Text.literal("🔄"), b -> {
+                    loading = true;
+                    error = null;
+                    records.clear();
+                    page = 0;
+                    updateButtons();
 
-            RankingScreen.ApiCache.fetchAllAsync(true, p -> {
-                loading = false;
-                error = null;
-                loadRecordsFromCache();
-                updateButtons();
-            }, err -> {
-                loading = false;
-                error = err;
-                updateButtons();
-            });
-        }).dimensions(this.width - OUTER_PAD - 8 - 80, y, 80, BTN_H).build();
-        addDrawableChild(refreshBtn);
+                    RankingScreen.ApiCache.fetchAllAsync(true, p -> {
+                        loading = false;
+                        error = null;
+                        loadRecordsFromCache();
+                        updateButtons();
+                    }, err -> {
+                        loading = false;
+                        error = err;
+                        updateButtons();
+                    });
+                })
+                .dimensions(this.width - iconBtnSize - OUTER_PAD, y, iconBtnSize, 20)
+                .tooltip(net.minecraft.client.gui.tooltip.Tooltip.of(Text.literal("새로 고침")))
+                .build());
 
+        // 5. 초기 데이터 로드 로직
         if (RankingScreen.ApiCache.isAllReady()) {
             loading = false;
             error = null;
@@ -119,8 +148,10 @@ public class PlayerProfileScreen extends Screen {
             error = null;
         }
 
+        // 6. 버튼 활성화 상태 업데이트
         updateButtons();
     }
+
 
     private void updateButtons() {
         int headerH = 66;
@@ -223,7 +254,13 @@ public class PlayerProfileScreen extends Screen {
             return;
         }
         if (error != null) {
-            context.drawCenteredTextWithShadow(this.textRenderer, "오류: " + error, this.width / 2, tableY + 30, 0xFF5555);
+            // error 문자열에 http가 포함되어 있다면 서비스 종료 안내 문구로 변경
+            String displayError = error;
+            if (error.toLowerCase().contains("http")) {
+                displayError = "이 버전은 서비스 종료 되었습니다. 최신 버전을 이용해 주세요.";
+            }
+
+            context.drawCenteredTextWithShadow(this.textRenderer, "오류: " + displayError, this.width / 2, tableY + 30, 0xFF5555);
             super.render(context, mouseX, mouseY, delta);
             return;
         }
