@@ -115,7 +115,7 @@ public class RankingScreen extends Screen {
     private final List<BodyHit> bodyHits = new ArrayList<>();
 
     public static final String GAS_URL =
-            "https://script.google.com/macros/s/AKfycbyDiMWUQr-5mL0QEs45pYEBGX3CtEUD1Uhwm5YA5ePyyKHrV2pcRYOQBUHARr0X1rJY/exec";
+            "https://script.google.com/macros/s/AKfycbxvvDHWNALWN5tk8hk48SHHL8tHmggPe9oiZfKHXLCZUAdf_8febuBLuvcV4ad5ryuc/exec";
 
     public RankingScreen(String track) {
         super(Text.literal("랭킹"));

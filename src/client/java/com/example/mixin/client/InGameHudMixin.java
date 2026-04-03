@@ -294,7 +294,13 @@ public class InGameHudMixin {
 					boolean sameTimeAsLast = (lastSoloFailTimeStr != null && lastSoloFailTimeStr.equals(s));
 					boolean inCooldown = (now - lastSoloFailMsgMs) < SOLO_FAIL_COOLDOWN_MS;
 
-					if (!sameTimeAsLast && !inCooldown && ModConfig.get().autoSubmitEnabled) return; {
+					// 1. 자동 제출이 꺼져 있으면 아예 실행하지 않고 돌아감
+					if (!ModConfig.get().autoSubmitEnabled) {
+						return;
+					}
+
+					// 2. 자동 제출이 켜져 있는 경우 중복 메시지 방지 로직 확인
+					if (!sameTimeAsLast && !inCooldown) {
 						client.player.sendMessage(Text.literal("플레이어가 최대 1명이어야 기록이 등록됩니다."), false);
 						lastSoloFailTimeStr = s;
 						lastSoloFailMsgMs = now;

@@ -200,10 +200,23 @@ public class EventRankingScreen extends Screen {
             joinBtn.setMessage(Text.literal("로딩중"));
             joinBtn.active = false;
         } else if (alreadyJoined) {
-            //여기서 현재 페이지 ID(eventInfo.eventID)와 참여 ID(joinedEventID)를 비교합니다.
             String currentID = eventInfo.eventID();
 
-            if (currentID != null && currentID.equals(joinedEventID)) {
+            // 콤마(,)로 구분된 joinedEventID를 배열로 나누어 포함 여부 확인
+            boolean isIncluded = false;
+            if (currentID != null && joinedEventID != null) {
+                String[] joinedIds = joinedEventID.split(",");
+                for (String id : joinedIds) {
+                    // 공백이 있을 수 있으니 trim()으로 제거 후 비교
+                    if (id.trim().equals(currentID)) {
+                        isIncluded = true;
+                        break;
+                    }
+                }
+            }
+
+            // 포함되어 있다면 '참여 완료', 아니면 '참여 불가'
+            if (isIncluded) {
                 joinBtn.setMessage(Text.literal("참여 완료"));
             } else {
                 joinBtn.setMessage(Text.literal("참여 불가"));

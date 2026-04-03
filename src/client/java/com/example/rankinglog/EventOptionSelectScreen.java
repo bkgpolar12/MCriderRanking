@@ -42,7 +42,7 @@ public class EventOptionSelectScreen extends Screen {
     private final List<EventEntry> events = new ArrayList<>();
 
     private static final Set<String> ALLOWED_PLAYERS = Set.of(
-            "BKGpolar1"
+            "BKGpolar"
     );
 
     private boolean loading = true;
