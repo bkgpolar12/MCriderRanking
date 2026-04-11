@@ -1,4 +1,3 @@
-// RankingScreen.java
 package com.example.rankinglog;
 
 import com.google.gson.JsonArray;
@@ -37,7 +36,7 @@ public class RankingScreen extends Screen {
     private ButtonWidget prevBtn;
     private ButtonWidget nextBtn;
 
-    // 필터 버튼(재배치)
+    // 필터 버튼
     private ButtonWidget tireToggleBtn;
     private ButtonWidget engineToggleBtn;
     private ButtonWidget trackSelectBtn;
@@ -45,7 +44,7 @@ public class RankingScreen extends Screen {
 
     // ===== 타이어 (드롭다운 단일선택) =====
     private boolean tirePanelOpen = false;
-    private final List<String> tires = new ArrayList<>(); // "ALL" 포함, 나머지 이름
+    private final List<String> tires = new ArrayList<>();
     private String selectedTire = "ALL";
 
     // ===== 엔진 (드롭다운 단일선택) =====
@@ -71,13 +70,8 @@ public class RankingScreen extends Screen {
 
     private static final int OUTER_PAD = 12;
     private static final int HEADER_TOP = 10;
-
-    // 버튼 컴팩트
     private static final int BTN_H = 18;
-
-    // 요청: 타이어/엔진/모드 버튼 너비를 "지금의 70%"로 (120 -> 84)
     private static final int BTN_W_SMALL = 84;
-
     private static final int BTN_W_TRACK = 110;
     private static final int BTN_GAP = 6;
 
@@ -96,8 +90,6 @@ public class RankingScreen extends Screen {
     private int headerH = 70;
     private int rowsPerPage = 6;
 
-
-
     // 드롭다운 영역(클릭 판정용)
     private int tirePanelX, tirePanelY, tirePanelW, tirePanelH;
     private int enginePanelX, enginePanelY, enginePanelW, enginePanelH;
@@ -114,8 +106,10 @@ public class RankingScreen extends Screen {
     }
     private final List<BodyHit> bodyHits = new ArrayList<>();
 
-    public static final String GAS_URL =
-            "https://script.google.com/macros/s/AKfycbxvvDHWNALWN5tk8hk48SHHL8tHmggPe9oiZfKHXLCZUAdf_8febuBLuvcV4ad5ryuc/exec";
+    // ===== Supabase 서버 설정 =====
+    public static final String SUPABASE_URL = "https://wmlcwmfabuziancpxdoq.supabase.co/rest/v1/";
+    public static final String SUPABASE_RPC_URL = SUPABASE_URL + "rpc/";
+    public static final String SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndtbGN3bWZhYnV6aWFuY3B4ZG9xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4ODEzMzQsImV4cCI6MjA5MTQ1NzMzNH0.0ZZJDv7qMRZzC7QdO2SYWApQ0ezSa-cx1M0aOawKe8M";
 
     public RankingScreen(String track) {
         super(Text.literal("랭킹"));
@@ -127,17 +121,25 @@ public class RankingScreen extends Screen {
         return track.replace("\n", " ").replaceAll("\\s+", " ").trim();
     }
 
+    // 색상 파싱 유틸리티
+    private int parseHex(String hex, int fallback) {
+        if (hex == null || hex.isEmpty()) return fallback;
+        try {
+            if (hex.startsWith("#")) hex = hex.substring(1);
+            return 0xFF000000 | Integer.parseInt(hex, 16);
+        } catch (Exception e) {
+            return fallback;
+        }
+    }
+
     @Override
     protected void init() {
         int iconBtnSize = 20;
-
         int cx = this.width / 2;
-        // 화면 너비에 따른 가변 설정
         boolean isSmall = this.width < 420;
-        int bottomBtnW = isSmall ? 65 : 80; // 화면이 작으면 버튼 너비 축소
-        int pageBtnGap = isSmall ? 40 : 60;  // 중앙 버튼과의 간격 조정
+        int pageBtnGap = isSmall ? 40 : 60;
 
-        // 1. 페이지 버튼 (중앙 하단)
+        // 1. 페이지 버튼
         prevBtn = ButtonWidget.builder(Text.literal("◀"), b -> {
             playUiClick(); if (page > 0) page--; updateButtons();
         }).dimensions(cx - pageBtnGap - 10, this.height - 28, 20, 20).build();
@@ -149,7 +151,7 @@ public class RankingScreen extends Screen {
         addDrawableChild(prevBtn);
         addDrawableChild(nextBtn);
 
-// 2. 왼쪽 기능 버튼 (기호: 🔍, 툴팁: 라이더 찾기)
+        // 2. 왼쪽 기능 버튼 (라이더 찾기)
         addDrawableChild(ButtonWidget.builder(Text.literal("🔍"), b -> {
                     playUiClick();
                     if (this.client != null) this.client.setScreen(new RiderFindScreen(this));
@@ -158,7 +160,7 @@ public class RankingScreen extends Screen {
                 .tooltip(net.minecraft.client.gui.tooltip.Tooltip.of(Text.literal("라이더 찾기")))
                 .build());
 
-// 뒤로 가기 버튼 (기호: ⏴, 툴팁: 뒤로 가기)
+        // 뒤로 가기 버튼
         addDrawableChild(ButtonWidget.builder(Text.literal("⏴"), b -> {
                     playUiClick();
                     if (this.client != null) this.client.setScreen(new MainMenuScreen());
@@ -167,7 +169,7 @@ public class RankingScreen extends Screen {
                 .tooltip(net.minecraft.client.gui.tooltip.Tooltip.of(Text.literal("뒤로 가기")))
                 .build());
 
-// 새로 고침 버튼 (기호: 🔄, 툴팁: 새로 고침)
+        // 새로 고침 버튼
         addDrawableChild(ButtonWidget.builder(Text.literal("🔄"), b -> {
                     playUiClick();
                     loading = true;
@@ -183,9 +185,9 @@ public class RankingScreen extends Screen {
                 .tooltip(net.minecraft.client.gui.tooltip.Tooltip.of(Text.literal("새로 고침")))
                 .build());
 
-        // --- 상단 필터 버튼들은 renderHeader에서 위치가 재계산되므로 기본 생성만 수행 ---
         int btnY = HEADER_TOP + 48;
-// 1. 타이어 필터 버튼
+
+        // 타이어 필터 버튼
         tireToggleBtn = ButtonWidget.builder(getTireToggleText(), b -> {
             playUiClick();
             tirePanelOpen = !tirePanelOpen;
@@ -197,17 +199,17 @@ public class RankingScreen extends Screen {
             if (engineToggleBtn != null) engineToggleBtn.setMessage(getEngineToggleText());
             if (modeToggleBtn != null) modeToggleBtn.setMessage(getModeToggleText());
             updateButtons();
-        }).dimensions(0, btnY, BTN_W_SMALL, BTN_H).build(); //
+        }).dimensions(0, btnY, BTN_W_SMALL, BTN_H).build();
 
-// 2. 트랙 선택 버튼
+        // 트랙 선택 버튼
         trackSelectBtn = ButtonWidget.builder(Text.literal("트랙 선택"), b -> {
             playUiClick();
             if (this.client != null) {
                 this.client.setScreen(new TrackSelectScreen(this, this.track, this::setTrackAndApplyFromCache));
             }
-        }).dimensions(0, btnY, BTN_W_TRACK, BTN_H).build(); //
+        }).dimensions(0, btnY, BTN_W_TRACK, BTN_H).build();
 
-// 3. 엔진 필터 버튼
+        // 엔진 필터 버튼
         engineToggleBtn = ButtonWidget.builder(getEngineToggleText(), b -> {
             playUiClick();
             enginePanelOpen = !enginePanelOpen;
@@ -220,9 +222,9 @@ public class RankingScreen extends Screen {
             if (modeToggleBtn != null) modeToggleBtn.setMessage(getModeToggleText());
             if (tireToggleBtn != null) tireToggleBtn.setMessage(getTireToggleText());
             updateButtons();
-        }).dimensions(0, btnY, BTN_W_SMALL, BTN_H).build(); //
+        }).dimensions(0, btnY, BTN_W_SMALL, BTN_H).build();
 
-// 4. 모드 필터 버튼
+        // 모드 필터 버튼
         modeToggleBtn = ButtonWidget.builder(getModeToggleText(), b -> {
             playUiClick();
             modePanelOpen = !modePanelOpen;
@@ -234,7 +236,7 @@ public class RankingScreen extends Screen {
             if (engineToggleBtn != null) engineToggleBtn.setMessage(getEngineToggleText());
             if (tireToggleBtn != null) tireToggleBtn.setMessage(getTireToggleText());
             updateButtons();
-        }).dimensions(0, btnY, BTN_W_SMALL, BTN_H).build(); //
+        }).dimensions(0, btnY, BTN_W_SMALL, BTN_H).build();
 
         addDrawableChild(tireToggleBtn);
         addDrawableChild(trackSelectBtn);
@@ -249,7 +251,6 @@ public class RankingScreen extends Screen {
         } else {
             loading = true;
             error = null;
-
             ApiCache.fetchAllAsync(false, p -> {
                 loading = false;
                 error = null;
@@ -269,7 +270,7 @@ public class RankingScreen extends Screen {
         ranking.clear();
         filtered.clear();
 
-        // reset filters
+        // 필터 초기화
         tires.clear();
         selectedTire = "ALL";
         tirePanelOpen = false;
@@ -328,7 +329,6 @@ public class RankingScreen extends Screen {
 
     private void updateButtons() {
         computeLayout();
-
         if (prevBtn != null) prevBtn.active = (page > 0);
         if (nextBtn != null) nextBtn.active = (!filtered.isEmpty() && (page + 1) * rowsPerPage < filtered.size());
     }
@@ -374,7 +374,6 @@ public class RankingScreen extends Screen {
         ranking.addAll(payload.ranking);
         if (payload.engines != null) engines.addAll(payload.engines);
 
-        // tire list는 entry에서 수집
         LinkedHashSet<String> tireSet = new LinkedHashSet<>();
         tireSet.add("ALL");
         for (Entry e : ranking) {
@@ -383,7 +382,6 @@ public class RankingScreen extends Screen {
         }
         tires.addAll(tireSet);
 
-        // 엔진 list 기본값 보정
         if (engines.isEmpty()) {
             LinkedHashSet<String> es = new LinkedHashSet<>();
             es.add("ALL");
@@ -404,7 +402,6 @@ public class RankingScreen extends Screen {
             return a.compareTo(b);
         });
 
-        // tires 정렬: ALL 먼저, UNKNOWN 마지막
         tires.removeIf(Objects::isNull);
         tires.replaceAll(s -> s == null ? "UNKNOWN" : s.trim());
         tires.removeIf(String::isBlank);
@@ -416,7 +413,6 @@ public class RankingScreen extends Screen {
             return a.compareTo(b);
         });
 
-        // 기본 선택
         selectedTire = "ALL";
         selectedEngine = "ALL";
         selectedModes.clear();
@@ -430,7 +426,6 @@ public class RankingScreen extends Screen {
         ensureEngineScrollForSelection();
     }
 
-    //필터: 타이어 + 엔진 + 모드(Exact match, 0개=없음)
     private void applyFilter() {
         filtered.clear();
 
@@ -536,8 +531,6 @@ public class RankingScreen extends Screen {
         int w = this.width - OUTER_PAD * 2;
         int h = headerH;
 
-
-
         context.fill(x, y, x + w, y + h, 0xCC000000);
         drawRectBorder(context, x, y, w, h, 0xFF2A2A2A);
 
@@ -553,13 +546,12 @@ public class RankingScreen extends Screen {
                 "타이어: " + tire + "   |   엔진: " + eng + "   |   모드: " + mode,
                 this.width / 2, y + 38, 0xBBBBBB);
 
-        // 버튼 배치 갱신
         int btnY = y + 48;
         int cx = this.width / 2;
 
         int gap = (this.width < 400) ? 4 : BTN_GAP;
         int totalBtnsW = (BTN_W_SMALL * 3) + BTN_W_TRACK + (gap * 3);
-        int startX = cx - (totalBtnsW / 2); // 시작점을 중앙 기준으로 계산
+        int startX = cx - (totalBtnsW / 2);
 
         if (tireToggleBtn != null) tireToggleBtn.setPosition(startX, btnY);
 
@@ -614,7 +606,6 @@ public class RankingScreen extends Screen {
         if (engineScroll > maxScroll) engineScroll = maxScroll;
     }
 
-    // 타이어 드롭다운(스크롤 필요 거의 없어서 단순)
     private void renderTireDropdown(DrawContext context, int mouseX, int mouseY) {
         if (tireToggleBtn == null) return;
 
@@ -650,7 +641,6 @@ public class RankingScreen extends Screen {
         }
     }
 
-    // 엔진 드롭다운
     private void renderEngineDropdown(DrawContext context, int mouseX, int mouseY) {
         if (engineToggleBtn == null) return;
 
@@ -714,7 +704,6 @@ public class RankingScreen extends Screen {
         }
     }
 
-    // 모드 드롭다운
     private void renderModeDropdown(DrawContext context, int mouseX, int mouseY) {
         if (modeToggleBtn == null) return;
 
@@ -743,7 +732,8 @@ public class RankingScreen extends Screen {
 
             int boxX = modePanelX + modePanelW - PANEL_PAD - CHECK_SIZE;
             int boxY = rowY + (ROW_H - CHECK_SIZE) / 2;
-            boolean hoverBox = mouseX >= boxX && mouseX < boxX + CHECK_SIZE && mouseY >= boxY && mouseY < boxY + CHECK_SIZE;
+            boolean hoverBox = mouseX >= boxX && mouseX < boxX + CHECK_SIZE
+                    && mouseY >= boxY && mouseY < boxY + CHECK_SIZE;
 
             drawCheckbox(context, boxX, boxY, checked, hoverBox);
 
@@ -794,14 +784,11 @@ public class RankingScreen extends Screen {
 
     @Override
     public void close() {
-        // ESC를 누르거나 화면이 닫힐 때 메인 메뉴 화면으로 이동
         if (this.client != null) {
             this.client.setScreen(new MainMenuScreen());
         }
     }
-    // =========================
-    //스크롤 처리(엔진 리스트)
-    // =========================
+
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
         if (enginePanelOpen) {
@@ -822,13 +809,8 @@ public class RankingScreen extends Screen {
         return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
     }
 
-    // =========================
-    //클릭 처리 + 플레이어 이름 클릭 -> 프로필
-    // =========================
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-
-        // 타이어 드롭다운
         if (tirePanelOpen) {
             if (mouseX < tirePanelX || mouseX >= tirePanelX + tirePanelW || mouseY < tirePanelY || mouseY >= tirePanelY + tirePanelH) {
                 tirePanelOpen = false;
@@ -857,7 +839,6 @@ public class RankingScreen extends Screen {
             return true;
         }
 
-        // 엔진 드롭다운
         if (enginePanelOpen) {
             if (mouseX < enginePanelX || mouseX >= enginePanelX + enginePanelW || mouseY < enginePanelY || mouseY >= enginePanelY + enginePanelH) {
                 enginePanelOpen = false;
@@ -892,7 +873,6 @@ public class RankingScreen extends Screen {
             return true;
         }
 
-        // 모드 드롭다운
         if (modePanelOpen) {
             if (mouseX < modePanelX || mouseX >= modePanelX + modePanelW || mouseY < modePanelY || mouseY >= modePanelY + modePanelH) {
                 modePanelOpen = false;
@@ -929,13 +909,12 @@ public class RankingScreen extends Screen {
             return true;
         }
 
-//플레이어 이름 클릭 -> 프로필 화면
         if (!loading && error == null && !filtered.isEmpty()) {
             computeLayout();
 
             int tableTop = HEADER_TOP + headerH + 10;
             int tableX = OUTER_PAD + 8;
-            int tableW = this.width - (OUTER_PAD + 8) * 2; //비율 계산을 위해 추가
+            int tableW = this.width - (OUTER_PAD + 8) * 2;
 
             int startY = tableTop + 24;
             int rowH = 18;
@@ -948,8 +927,13 @@ public class RankingScreen extends Screen {
                 int idxInPage = (i - start);
                 int playerY = startY + idxInPage * rowH;
 
-                int playerX = tableX + (int)(tableW * 0.15); //비율(0.15) 적용으로 변경
-                int playerW = this.textRenderer.getWidth(e.player());
+                int playerX = tableX + (int)(tableW * 0.15);
+
+                String displayPlayer = e.player();
+                if (e.repTitle() != null && !e.repTitle().isEmpty()) {
+                    displayPlayer += " [" + e.repTitle() + "]";
+                }
+                int playerW = this.textRenderer.getWidth(displayPlayer);
                 int playerH = 9;
 
                 boolean hitPlayer =
@@ -969,13 +953,9 @@ public class RankingScreen extends Screen {
         return super.mouseClicked(mouseX, mouseY, button);
     }
 
-    // =========================
-    //렌더
-    // =========================
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         renderBackground(context, mouseX, mouseY, delta);
-
         renderHeader(context);
 
         if (tirePanelOpen) renderTireDropdown(context, mouseX, mouseY);
@@ -988,14 +968,12 @@ public class RankingScreen extends Screen {
         int tableBottom = this.height - 46;
         int tableH = Math.max(80, tableBottom - tableTop);
 
-// ===== 반응형 컬럼 위치 =====
         int colRankX   = tableX + (int)(tableW * 0.02);
         int colPlayerX = tableX + (int)(tableW * 0.15);
         int colTimeX   = tableX + (int)(tableW * 0.40);
         int colBodyX   = tableX + (int)(tableW * 0.60);
         int colEngineX = tableX + (int)(tableW * 0.85);
 
-        // ===== 화면 크기에 따른 컬럼 표시 임계값 =====
         boolean showTime   = tableW > 250;
         boolean showBody   = tableW > 320;
         boolean showEngine = tableW > 380;
@@ -1006,7 +984,6 @@ public class RankingScreen extends Screen {
             return;
         }
         if (error != null) {
-            // error 문자열에 http가 포함되어 있다면 서비스 종료 안내 문구로 변경
             String displayError = error;
             if (error.toLowerCase().contains("http")) {
                 displayError = "이 버전은 서비스 종료 되었습니다. 최신 버전을 이용해 주세요.";
@@ -1027,20 +1004,16 @@ public class RankingScreen extends Screen {
             return;
         }
 
-        // 테이블 박스
         context.fill(tableX, tableTop, tableX + tableW, tableTop + tableH, 0x66000000);
         drawRectBorder(context, tableX, tableTop, tableW, tableH, 0xFF222222);
 
-        // 컬럼 헤더
         int headerRowY = tableTop + 8;
         context.drawTextWithShadow(this.textRenderer, "순위", colRankX, headerRowY, 0xDDDDDD);
         context.drawTextWithShadow(this.textRenderer, "플레이어", colPlayerX, headerRowY, 0xDDDDDD);
         if (showTime)
             context.drawTextWithShadow(this.textRenderer, "기록", colTimeX, headerRowY, 0xDDDDDD);
-
         if (showBody)
             context.drawTextWithShadow(this.textRenderer, "카트바디", colBodyX, headerRowY, 0xDDDDDD);
-
         if (showEngine)
             context.drawTextWithShadow(this.textRenderer, "엔진", colEngineX, headerRowY, 0xDDDDDD);
 
@@ -1071,36 +1044,42 @@ public class RankingScreen extends Screen {
             String eng = normalizeEngine(e.engineName());
             String bodyLabel = TireUtil.composeBodyLabel(e.bodyName(), e.tireName());
 
-            int rankColor =
-                    (rank == 1) ? 0xFFFFE066 :
-                            (rank == 2) ? 0xFFE6E6E6 :
-                                    (rank == 3) ? 0xFFFFB36B :
-                                            0xFFFFFFFF;
-
+            int rankColor = (rank == 1) ? 0xFFFFE066 : (rank == 2) ? 0xFFE6E6E6 : (rank == 3) ? 0xFFFFB36B : 0xFFFFFFFF;
             context.drawTextWithShadow(this.textRenderer, rank + "위", colRankX, y, rankColor);
 
-            int playerW = this.textRenderer.getWidth(e.player());
-            boolean hoverPlayer =
-                    mouseX >= colPlayerX && mouseX <= colPlayerX + playerW &&
-                            mouseY >= y - 2 && mouseY <= y - 2 + 9 + 6;
+            String displayPlayer = e.player();
+            String repText = "";
+            if (e.repTitle() != null && !e.repTitle().isEmpty()) {
+                repText = " [" + e.repTitle() + "]";
+                displayPlayer += repText;
+            }
+
+            int playerW = this.textRenderer.getWidth(displayPlayer);
+            boolean hoverPlayer = mouseX >= colPlayerX && mouseX <= colPlayerX + playerW && mouseY >= y - 2 && mouseY <= y - 2 + 9 + 6;
 
             if (hoverPlayer) {
                 hoveredEntry = e;
                 hoverOnPlayerName = true;
             }
 
+            if (repText.isEmpty()) {
+                context.drawTextWithShadow(this.textRenderer, e.player(), colPlayerX, y, hoverPlayer ? 0xFFFFEE88 : 0xFFFFFF);
+            } else {
+                int pColor = hoverPlayer ? 0xFFFFEE88 : 0xFFFFFF;
+                int rColor = hoverPlayer ? 0xFFFFEE88 : parseHex(e.repColor(), 0x55FFFF);
+
+                context.drawTextWithShadow(this.textRenderer, e.player(), colPlayerX, y, pColor);
+                context.drawTextWithShadow(this.textRenderer, repText, colPlayerX + this.textRenderer.getWidth(e.player()), y, rColor);
+            }
+
             boolean hiddenSomething = false;
 
-            int playerColor = hoverPlayer ? 0xFFFFEE88 : 0xFFFFFF;
-
-            context.drawTextWithShadow(this.textRenderer, e.player(), colPlayerX, y, playerColor);
             if (showTime) {
                 context.drawTextWithShadow(this.textRenderer, e.timeStr(), colTimeX, y, 0xFFFFFF);
             } else {
                 hiddenSomething = true;
             }
 
-            // 바디 + 타이어 기호 + hover tooltip
             int bodyW = this.textRenderer.getWidth(bodyLabel);
             BodyHit bh = new BodyHit(colBodyX, y - 2, colBodyX + bodyW, y + 10, e.tireName());
             bodyHits.add(bh);
@@ -1120,19 +1099,10 @@ public class RankingScreen extends Screen {
             }
 
             if (hiddenSomething) {
-                context.drawTextWithShadow(
-                        this.textRenderer,
-                        "+",
-                        tableX + tableW - 20,
-                        y,
-                        0xAAAAAA
-                );
+                context.drawTextWithShadow(this.textRenderer, "+", tableX + tableW - 20, y, 0xAAAAAA);
             }
-
-
         }
 
-        // 툴팁 우선순위: 타이어(바디 hover) > 기존 등록/프로필 안내
         if (hoveredTireTooltip != null) {
             drawTooltipBox(context, mouseX, mouseY, hoveredTireTooltip);
         } else if (hoveredEntry != null) {
@@ -1158,14 +1128,21 @@ public class RankingScreen extends Screen {
         return false;
     }
 
-    // tireName 추가
-    public record Entry(String player, String timeStr, long timeMillis,
-                               String engineName, String bodyName, String tireName, String modes,
-                               long submittedAtMs) {}
+    public record Entry(String player, String repTitle, String repColor, String timeStr, long timeMillis,
+                        String engineName, String bodyName, String tireName, String modes,
+                        long submittedAtMs) {}
 
-    /* =========================================================
-      ApiCache: getAll 단일 호출로 모든 데이터 캐시
-       ========================================================= */
+    // 안전하게 Json 값을 추출하는 방어 로직 (JsonNull 원천 차단)
+    private static String safeString(JsonObject o, String key, String def) {
+        return o.has(key) && !o.get(key).isJsonNull() ? o.get(key).getAsString() : def;
+    }
+    private static long safeLong(JsonObject o, String key, long def) {
+        return o.has(key) && !o.get(key).isJsonNull() ? o.get(key).getAsLong() : def;
+    }
+    private static int safeInt(JsonObject o, String key, int def) {
+        return o.has(key) && !o.get(key).isJsonNull() ? o.get(key).getAsInt() : def;
+    }
+
     public static final class ApiCache {
         private ApiCache() {}
 
@@ -1197,7 +1174,7 @@ public class RankingScreen extends Screen {
         private static volatile boolean fetching = false;
         private static final List<Runnable> waiters = new ArrayList<>();
 
-        private static final long TTL_MS = 1 * 60_000;
+        private static final long TTL_MS = 60_000;
 
         public static boolean isAllReady() {
             return getAllIfReady() != null;
@@ -1235,18 +1212,18 @@ public class RankingScreen extends Screen {
                 AllPayload payload = null;
 
                 try {
-                    JsonObject res = Net.postJson(GAS_URL, "{\"action\":\"getAll\"}");
+                    JsonObject res = Net.postJson(SUPABASE_RPC_URL + "get_all_rankings", "{}");
 
                     if (!res.has("ok") || !res.get("ok").getAsBoolean()) {
-                        err = res.has("error") ? res.get("error").getAsString() : "unknown error";
+                        err = safeString(res, "error", "unknown error");
                     } else {
                         List<TrackSelectScreen.TrackEntry> tracks = new ArrayList<>();
                         if (res.has("tracks") && res.get("tracks").isJsonArray()) {
                             JsonArray arr = res.getAsJsonArray("tracks");
                             for (int i = 0; i < arr.size(); i++) {
                                 JsonObject o = arr.get(i).getAsJsonObject();
-                                String tr = o.get("track").getAsString();
-                                int count = o.get("count").getAsInt();
+                                String tr = safeString(o, "track", "Unknown");
+                                int count = safeInt(o, "count", 0);
                                 tracks.add(new TrackSelectScreen.TrackEntry(tr, count));
                             }
                             tracks.sort(Comparator.comparingInt(TrackSelectScreen.TrackEntry::count).reversed());
@@ -1263,8 +1240,10 @@ public class RankingScreen extends Screen {
                                 if (v.has("engines") && v.get("engines").isJsonArray()) {
                                     JsonArray earr = v.getAsJsonArray("engines");
                                     for (int j = 0; j < earr.size(); j++) {
-                                        String e = earr.get(j).getAsString();
-                                        if (e != null && !e.isBlank()) engines.add(e.trim().toUpperCase());
+                                        if (!earr.get(j).isJsonNull()) {
+                                            String e = earr.get(j).getAsString();
+                                            if (e != null && !e.isBlank()) engines.add(e.trim().toUpperCase());
+                                        }
                                     }
                                 }
 
@@ -1273,16 +1252,18 @@ public class RankingScreen extends Screen {
                                     JsonArray rarr = v.getAsJsonArray("ranking");
                                     for (int j = 0; j < rarr.size(); j++) {
                                         JsonObject o = rarr.get(j).getAsJsonObject();
-                                        String player = o.get("player").getAsString();
-                                        String time = o.get("time").getAsString();
-                                        long ms = o.get("timeMillis").getAsLong();
-                                        String engineName = o.has("engineName") ? o.get("engineName").getAsString() : "UNKNOWN";
-                                        String bodyName = o.has("bodyName") ? o.get("bodyName").getAsString() : "UNKNOWN";
-                                        String tireName = o.has("tireName") ? o.get("tireName").getAsString() : "UNKNOWN";
-                                        String modes = o.has("modes") ? o.get("modes").getAsString() : "없음";
-                                        long submittedAtMs = o.has("submittedAtMs") ? o.get("submittedAtMs").getAsLong() : 0L;
+                                        String player = safeString(o, "player", "Unknown");
+                                        String repTitle = safeString(o, "repTitle", "");
+                                        String repColor = safeString(o, "repColor", "#55FFFF");
+                                        String time = safeString(o, "time", "00:00.000");
+                                        long ms = safeLong(o, "timeMillis", 0L);
+                                        String engineName = safeString(o, "engineName", "UNKNOWN");
+                                        String bodyName = safeString(o, "bodyName", "UNKNOWN");
+                                        String tireName = safeString(o, "tireName", "UNKNOWN");
+                                        String modes = safeString(o, "modes", "없음");
+                                        long submittedAtMs = safeLong(o, "submittedAtMs", 0L);
 
-                                        list.add(new Entry(player, time, ms, engineName, bodyName, tireName, modes, submittedAtMs));
+                                        list.add(new Entry(player, repTitle, repColor, time, ms, engineName, bodyName, tireName, modes, submittedAtMs));
                                     }
                                 }
 
@@ -1312,7 +1293,7 @@ public class RankingScreen extends Screen {
                     if (ferr != null) onError.accept(ferr);
                     else onDone.accept(fp);
                 });
-            }, "GAS-getAll-Fetch").start();
+            }, "Supabase-getAll-Fetch").start();
         }
     }
 
@@ -1325,6 +1306,11 @@ public class RankingScreen extends Screen {
 
             con.setRequestMethod("POST");
             con.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+
+            // Supabase 필수 헤더
+            con.setRequestProperty("apikey", SUPABASE_KEY);
+            con.setRequestProperty("Authorization", "Bearer " + SUPABASE_KEY);
+
             con.setDoOutput(true);
 
             con.getOutputStream().write(jsonBody.getBytes(StandardCharsets.UTF_8));

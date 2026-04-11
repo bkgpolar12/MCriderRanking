@@ -23,12 +23,10 @@ public class AutoSubmitter {
         if (now - prev < MIN_INTERVAL_MS) return;
         lastSubmitAt.set(now);
 
-        // ✅ 캐싱된 카트 색상을 가져옵니다.
         String bodyColor = BodyCaptureManager.getCachedKartColorOrHex();
 
         CompletableFuture
                 .supplyAsync(() -> {
-                    // ✅ AddRankingScreen.submitRecord에 bodyColor 매개변수 추가
                     return AddRankingScreen.submitRecord(player, track, timeStr, timeMillis, engineName, bodyName, bodyColor, tireName, modesCsv);
                 }, Util.getIoWorkerExecutor())
                 .exceptionally(ex -> {
@@ -42,6 +40,13 @@ public class AutoSubmitter {
                     MinecraftClient client = MinecraftClient.getInstance();
                     client.execute(() -> {
                         if (client.player == null) return;
+
+                        if (res != null && res.has("achievementUnlocked") && res.get("achievementUnlocked").getAsBoolean()) {
+                            client.player.sendMessage(
+                                    Text.literal("§e트랙 업적 달성! F7키 - 프로필을 들어가서 확인할 수 있습니다"),
+                                    false
+                            );
+                        }
 
                         boolean ok = res != null && res.has("ok") && res.get("ok").getAsBoolean();
                         if (ok) {
@@ -59,7 +64,7 @@ public class AutoSubmitter {
                                 );
                             } else if ("BAD JSON RESPONSE".equalsIgnoreCase(err)) {
                                 client.player.sendMessage(
-                                        Text.literal("[MCRiderRanking] 등록 실패 : 응답이 유효한 JSON 응답이 아닙니다. 설치된 MCRiderRanking 모드의 버전을 확인하고 최신 버전을 이용해주세요."),
+                                        Text.literal("[MCRiderRanking] 등록 실패 : 응답이 유효한 JSON이 아닙니다. 모드 최신 버전을 확인하세요."),
                                         false
                                 );
                             } else {

@@ -1,18 +1,11 @@
 package com.example.rankinglog;
 
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.text.Text;
-
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
 
 public class AddRankingScreen extends Screen {
 
@@ -26,10 +19,6 @@ public class AddRankingScreen extends Screen {
 
     private long lastSubmitTime = 0;
 
-    // 타임아웃(필요하면 값 조절)
-    private static final int CONNECT_TIMEOUT_MS = 3000;
-    private static final int READ_TIMEOUT_MS = 5000;
-
     public AddRankingScreen(String player, String track, String time) {
         super(Text.literal("기록 추가"));
         this.player = player;
@@ -42,19 +31,13 @@ public class AddRankingScreen extends Screen {
         int cx = this.width / 2;
         int cy = this.height / 2;
 
-        playerField = new TextFieldWidget(
-                textRenderer, cx - 100, cy - 50, 200, 20, Text.literal("플레이어")
-        );
+        playerField = new TextFieldWidget(textRenderer, cx - 100, cy - 50, 200, 20, Text.literal("플레이어"));
         playerField.setText(player);
 
-        trackField = new TextFieldWidget(
-                textRenderer, cx - 100, cy - 20, 200, 20, Text.literal("트랙")
-        );
+        trackField = new TextFieldWidget(textRenderer, cx - 100, cy - 20, 200, 20, Text.literal("트랙"));
         trackField.setText(track);
 
-        timeField = new TextFieldWidget(
-                textRenderer, cx - 100, cy + 10, 200, 20, Text.literal("기록")
-        );
+        timeField = new TextFieldWidget(textRenderer, cx - 100, cy + 10, 200, 20, Text.literal("기록"));
         timeField.setText(time);
 
         addDrawableChild(playerField);
@@ -67,18 +50,14 @@ public class AddRankingScreen extends Screen {
                     long now = System.currentTimeMillis();
                     if (now - lastSubmitTime < 5000) return; // 5초 쿨타임
 
-                    String player = playerField.getText();
-                    String track = trackField.getText();
-                    String timeStr = timeField.getText();
+                    String p = playerField.getText();
+                    String tr = trackField.getText();
+                    String t = timeField.getText();
 
-                    long newTimeMillis = parseTimeToMillis(timeStr);
+                    long newTimeMillis = parseTimeToMillis(t);
                     if (newTimeMillis < 0) {
-                        MinecraftClient client = MinecraftClient.getInstance();
-                        if (client.player != null) {
-                            client.player.sendMessage(
-                                    Text.literal("등록 실패 : 기록 형식이 올바르지 않습니다"),
-                                    false
-                            );
+                        if (client != null && client.player != null) {
+                            client.player.sendMessage(Text.literal("등록 실패 : 기록 형식이 올바르지 않습니다"), false);
                         }
                         return;
                     }
@@ -89,73 +68,39 @@ public class AddRankingScreen extends Screen {
                     // 네트워크 작업은 반드시 백그라운드 스레드에서
                     new Thread(() -> {
                         try {
-                            // 예시: 엔진 이름(너 프로젝트에서 실제 값으로 교체 가능)
-                            String engineName = "[X]";
-                            String bodyName = BodyCaptureManager.getCachedKartBodyNameOrUnknown(); // 바디 이름
-                            String bodyColor = BodyCaptureManager.getCachedKartColorOrHex();       // ✅ 바디 색상
-                            int engine = 0;
+                            String engineName = "[X]"; // AutoSubmitter에서 올바른 값을 넘겨줌
+                            String bodyName = BodyCaptureManager.getCachedKartBodyNameOrUnknown();
+                            String bodyColor = BodyCaptureManager.getCachedKartColorOrHex();
                             String modesCsv = "없음";
                             String tireName = "레이싱 타이어";
 
-                            // 1) best 기록 확인 (선택)
-                            Long best = checkBestRecord(player, track, engineName);
-
-                            if (best != null && newTimeMillis >= best) {
-                                MinecraftClient.getInstance().execute(() -> {
-                                    MinecraftClient client = MinecraftClient.getInstance();
-                                    if (client.player != null) {
-                                        client.player.sendMessage(
-                                                Text.literal("등록 실패 : 새 기록이 기존 기록과 같거나 더 느립니다"),
-                                                false
-                                        );
-                                    }
-                                    btn.active = true;
-                                });
-                                return;
-                            }
-
-                            // 2) 등록 (✅ bodyColor 파라미터 추가)
-                            JsonObject submitRes = submitRecord(player, track, timeStr, newTimeMillis, engineName, bodyName, bodyColor, tireName, modesCsv);
+                            // 1) Supabase에 전송!
+                            JsonObject submitRes = submitRecord(p, tr, t, newTimeMillis, engineName, bodyName, bodyColor, tireName, modesCsv);
 
                             boolean ok = submitRes.has("ok") && submitRes.get("ok").getAsBoolean();
                             if (!ok) {
-                                String err = submitRes.has("error") ? submitRes.get("error").getAsString() : "unknown";
+                                String err = submitRes.has("error") ? submitRes.get("error").getAsString() : "unknown error";
                                 MinecraftClient.getInstance().execute(() -> {
-                                    MinecraftClient client = MinecraftClient.getInstance();
-                                    if (client.player != null) {
-
-                                        client.player.sendMessage(
-
-                                                Text.literal("등록 실패 : " + err),
-                                                false
-                                        );
+                                    if (client != null && client.player != null) {
+                                        client.player.sendMessage(Text.literal("등록 실패 : " + err), false);
                                     }
                                     btn.active = true;
                                 });
                                 return;
                             }
 
-                            // 성공: 화면 닫기(메인 스레드에서)
+                            // 2) 성공: 화면 닫기(메인 스레드에서)
                             MinecraftClient.getInstance().execute(this::close);
 
                         } catch (Exception e) {
                             e.printStackTrace();
                             MinecraftClient.getInstance().execute(() -> {
-                                MinecraftClient client = MinecraftClient.getInstance();
-                                if (client.player != null) {
-                                    client.player.sendMessage(
-                                            Text.literal("등록 실패 : 네트워크 오류"),
-                                            false
-                                    );
+                                if (client != null && client.player != null) {
+                                    client.player.sendMessage(Text.literal("등록 실패 : 통신 오류"), false);
                                 }
                                 btn.active = true;
                             });
-                            return;
                         }
-
-                        // 쿨타임 끝나면 버튼 다시 활성화(메인 스레드)
-                        MinecraftClient.getInstance().execute(() -> btn.active = true);
-
                     }, "ranking-submit-thread").start();
 
                 }).dimensions(cx - 40, cy + 40, 80, 20).build()
@@ -170,236 +115,125 @@ public class AddRankingScreen extends Screen {
     }
 
     public static long parseTimeToMillis(String time) {
+
+
         try {
+
+
             String[] minSplit = time.split(":");
+
+
             int minutes = Integer.parseInt(minSplit[0]);
 
+
+
+
+
+
+
             String[] secSplit = minSplit[1].split("\\.");
+
+
+
             int seconds = Integer.parseInt(secSplit[0]);
+
+
+
             int millis = Integer.parseInt(secSplit[1]);
 
+
+
+
+
+
+
             return minutes * 60_000L + seconds * 1_000L + millis;
+
+
+
         } catch (Exception e) {
+
+
+
             return -1;
+
+
+
         }
+
+
+
     }
 
     /**
-     * 타임아웃 + 스트림 안전 종료 + errorStream 처리 포함
+     * 완벽하게 Supabase 형식(p_변수명)으로 맞춰진 기록 제출 함수
      */
-    private static JsonObject postToGas(String jsonBody) throws Exception {
-        return postToGasInternal(jsonBody, 0);
-    }
-
-    private static JsonObject postToGasInternal(String jsonBody, int depth) throws Exception {
-        // 무한 리다이렉트 방지
-        if (depth > 3) {
-            JsonObject fail = new JsonObject();
-            fail.addProperty("ok", false);
-            fail.addProperty("error", "too many redirects");
-            return fail;
-        }
-
-        URI uri = URI.create(RankingScreen.GAS_URL);
-        HttpURLConnection con = (HttpURLConnection) uri.toURL().openConnection();
-
-        con.setRequestMethod("POST");
-        con.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-        con.setRequestProperty("Accept", "application/json");
-        con.setRequestProperty("User-Agent", "MinecraftRankingMod/1.0");
-        con.setUseCaches(false);
-        con.setDoOutput(true);
-
-        con.setConnectTimeout(CONNECT_TIMEOUT_MS);
-        con.setReadTimeout(READ_TIMEOUT_MS);
-
-        // 중요: 리다이렉트는 우리가 직접 처리
-        con.setInstanceFollowRedirects(false);
-
-        byte[] body = jsonBody.getBytes(StandardCharsets.UTF_8);
-        con.setFixedLengthStreamingMode(body.length);
-
-        try (OutputStream os = con.getOutputStream()) {
-            os.write(body);
-            os.flush();
-        }
-
-        int code = con.getResponseCode();
-
-        // 302/301 등 리다이렉트면 Location 따라가기
-        if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) {
-            String location = con.getHeaderField("Location");
-            con.disconnect();
-
-            if (location == null || location.isBlank()) {
-                JsonObject fail = new JsonObject();
-                fail.addProperty("ok", false);
-                fail.addProperty("error", "redirect without location");
-                fail.addProperty("httpCode", code);
-                return fail;
-            }
-
-            // Apps Script는 보통 script.googleusercontent.com 으로 보내줌
-            // 여기서는 실행은 이미 되었고, 응답(JSON)만 받으면 되니까 GET으로 받아도 안전
-            return fetchRedirectAsGet(location, depth + 1);
-        }
-
-        // 일반 응답 읽기 (성공/실패 모두)
-        String response = readAnyBody(con, code);
-        con.disconnect();
-
-        return parseJsonOrFallback(response, code);
-    }
-
-    private static JsonObject fetchRedirectAsGet(String url, int depth) throws Exception {
-        if (depth > 3) {
-            JsonObject fail = new JsonObject();
-            fail.addProperty("ok", false);
-            fail.addProperty("error", "too many redirects");
-            return fail;
-        }
-
-        URI uri = URI.create(url);
-        HttpURLConnection con = (HttpURLConnection) uri.toURL().openConnection();
-
-        con.setRequestMethod("GET");
-        con.setRequestProperty("Accept", "application/json");
-        con.setRequestProperty("User-Agent", "MinecraftRankingMod/1.0");
-
-        con.setConnectTimeout(CONNECT_TIMEOUT_MS);
-        con.setReadTimeout(READ_TIMEOUT_MS);
-
-        con.setInstanceFollowRedirects(false);
-
-        int code = con.getResponseCode();
-
-        // 리다이렉트가 또 오면 한 번 더 따라가기
-        if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) {
-            String location = con.getHeaderField("Location");
-            con.disconnect();
-
-            if (location == null || location.isBlank()) {
-                JsonObject fail = new JsonObject();
-                fail.addProperty("ok", false);
-                fail.addProperty("error", "redirect without location");
-                fail.addProperty("httpCode", code);
-                return fail;
-            }
-
-            return fetchRedirectAsGet(location, depth + 1);
-        }
-
-        String response = readAnyBody(con, code);
-        con.disconnect();
-
-        return parseJsonOrFallback(response, code);
-    }
-
-    private static String readAnyBody(HttpURLConnection con, int code) {
-        try {
-            InputStream is = (code >= 200 && code < 300) ? con.getInputStream() : con.getErrorStream();
-            if (is == null) return "";
-            try (InputStream in = is) {
-                return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-            }
-        } catch (Exception e) {
-            return "";
-        }
-    }
-
-    private static JsonObject parseJsonOrFallback(String response, int httpCode) {
-        String trimmed = (response == null) ? "" : response.trim();
-
-        // 바디가 비어있으면: 2xx면 ok=true 처리
-        if (trimmed.isEmpty()) {
-            JsonObject fb = new JsonObject();
-            fb.addProperty("ok", httpCode >= 200 && httpCode < 300);
-            fb.addProperty("error", httpCode >= 200 && httpCode < 300 ? "" : ("http " + httpCode));
-            fb.addProperty("httpCode", httpCode);
-            fb.addProperty("raw", "");
-            return fb;
-        }
-
-        try {
-            JsonObject obj = JsonParser.parseString(trimmed).getAsJsonObject();
-            if (!obj.has("ok")) obj.addProperty("ok", httpCode >= 200 && httpCode < 300);
-            if (!obj.has("httpCode")) obj.addProperty("httpCode", httpCode);
-            return obj;
-        } catch (Exception e) {
-            JsonObject fb = new JsonObject();
-            fb.addProperty("ok", httpCode >= 200 && httpCode < 300);
-            fb.addProperty("error", httpCode >= 200 && httpCode < 300 ? "" : "bad json response");
-            fb.addProperty("httpCode", httpCode);
-            fb.addProperty("raw", trimmed);
-            return fb;
-        }
-    }
-
-    public static Long checkBestRecord(String player, String track, String engineName) {
-        try {
-            // 너 코드에서 여기 JSON이 깨져있던 부분(따옴표/줄바꿈) 고침
-            String json = String.format("""
-            {
-              "action": "check",
-              "player": "%s",
-              "track": "%s",
-              "engine": %d,
-              "engineName": "%s"
-            }
-            """, player, track, 0, engineName);
-
-            JsonObject res = postToGas(json);
-
-            if (!res.has("ok") || !res.get("ok").getAsBoolean()) return null;
-            if (!res.has("bestTime") || res.get("bestTime").isJsonNull()) return null;
-
-            return res.get("bestTime").getAsLong();
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            return null;
-        }
-    }
-
-    // ✅ 매개변수에 bodyColor 추가 및 JSON 포맷팅에 반영
     public static JsonObject submitRecord(String player, String track, String timeStr, long timeMillis,
-                                          String engineName, String bodyName, String bodyColor, String tireName, String modesCsv)
-    {
-        String json = String.format("""
-{
-  "action": "submit",
-  "player": "%s",
-  "track": "%s",
-  "time": "%s",
-  "timeMillis": %d,
-  "engine": %d,
-  "engineName": "%s",
-  "bodyName": "%s",
-  "bodyColor": "%s",
-  "modes": "%s",
-  "tire": "%s"
-}
-""",
-                player, track, timeStr, timeMillis, 0,
-                engineName, bodyName, bodyColor, // ✅ 색상 데이터 매핑
-                modesCsv, tireName
-        );
+                                          String engineName, String bodyName, String bodyColor, String tireName, String modesCsv) {
+
+        JsonObject json = new JsonObject();
+        json.addProperty("p_player", player);
+        json.addProperty("p_track", track);
+        json.addProperty("p_time_millis", timeMillis);
+        json.addProperty("p_time_str", timeStr);
+        json.addProperty("p_engine_name", engineName);
+        json.addProperty("p_body_name", bodyName);
+        json.addProperty("p_body_color", bodyColor);
+        json.addProperty("p_mode", modesCsv);
+        json.addProperty("p_tire", tireName);
 
         try {
-            // 정상적으로 JSON 응답을 받으면 그대로 반환
-            return postToGas(json);
+            java.net.URI uri = java.net.URI.create(RankingScreen.SUPABASE_RPC_URL + "submit_racing_record_v3");
+            java.net.HttpURLConnection con = (java.net.HttpURLConnection) uri.toURL().openConnection();
+            con.setRequestMethod("POST");
+            con.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+            con.setRequestProperty("apikey", RankingScreen.SUPABASE_KEY);
+            con.setRequestProperty("Authorization", "Bearer " + RankingScreen.SUPABASE_KEY);
+            con.setDoOutput(true);
 
+            // 데이터 전송
+            byte[] input = json.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            con.getOutputStream().write(input);
+
+            // 응답 코드 확인
+            int code = con.getResponseCode();
+
+            // 💡 핵심: 200번대(성공)가 아니면 에러 스트림을 강제로 열어서 읽습니다!
+            java.io.InputStream is = (code >= 200 && code < 300) ? con.getInputStream() : con.getErrorStream();
+
+            if (is == null) {
+                JsonObject fail = new JsonObject();
+                fail.addProperty("ok", false);
+                fail.addProperty("error", "HTTP " + code + " (응답 없음)");
+                return fail;
+            }
+
+            try (java.io.InputStreamReader reader = new java.io.InputStreamReader(is, java.nio.charset.StandardCharsets.UTF_8)) {
+                com.google.gson.JsonElement el = com.google.gson.JsonParser.parseReader(reader);
+
+                // 데이터베이스가 거절한 경우 (400, 404, 500 등)
+                if (code >= 400) {
+                    JsonObject fail = new JsonObject();
+                    fail.addProperty("ok", false);
+
+                    // Supabase가 보내준 진짜 에러 메시지 추출
+                    String errorMsg = el.toString();
+                    if (el.isJsonObject() && el.getAsJsonObject().has("message")) {
+                        errorMsg = el.getAsJsonObject().get("message").getAsString();
+                    }
+
+                    // 마인크래프트 채팅창에 띄울 최종 에러
+                    fail.addProperty("error", "DB 거절(" + code + "): " + errorMsg);
+                    return fail;
+                }
+
+                return el.getAsJsonObject();
+            }
         } catch (Exception e) {
-            // 여기서 핵심: 등록은 되었을 수 있으니 "확정 실패"로 단정하지 않기
-            e.printStackTrace();
-
-            JsonObject maybe = new JsonObject();
-            maybe.addProperty("ok", true);               // 임시 성공 처리
-            maybe.addProperty("suspected", true);        // 응답 처리 실패 표시
-            maybe.addProperty("note", "response read failed, but request may have succeeded");
-            maybe.addProperty("message", e.toString());
-            return maybe;
+            JsonObject fail = new JsonObject();
+            fail.addProperty("ok", false);
+            fail.addProperty("error", "자바 에러: " + e.getMessage());
+            return fail;
         }
     }
-
 }
