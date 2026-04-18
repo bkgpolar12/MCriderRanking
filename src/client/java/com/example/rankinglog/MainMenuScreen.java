@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 public class MainMenuScreen extends Screen {
 
@@ -30,6 +31,10 @@ public class MainMenuScreen extends Screen {
     private static boolean loaded = false;
     private static boolean loading = false;
     private static final List<Notice> cachedNotices = new ArrayList<>();
+
+    private static int activeEventCount = -1;
+    private static long eventCountCachedAt = 0;
+    private static final long EVENT_TTL_MS = 60_000;
 
     private static class Notice {
         String title; String desc;
@@ -86,14 +91,28 @@ public class MainMenuScreen extends Screen {
         addDrawableChild(ButtonWidget.builder(Text.empty(), b -> { Objects.requireNonNull(client).setScreen(new ModSettingsScreen(this)); })
                 .dimensions(startX + (currentBtnSize + gap) * 2, funcButtonY, currentBtnSize, currentBtnSize).tooltip(Tooltip.of(Text.literal("설정"))).build());
 
-        addDrawableChild(ButtonWidget.builder(Text.empty(), b -> { loaded = false; fetchNotices(); })
-                .dimensions(width - currentBtnSize - 10, height - currentBtnSize - 10, currentBtnSize, currentBtnSize).tooltip(Tooltip.of(Text.literal("새로고침"))).build());
+        addDrawableChild(ButtonWidget.builder(Text.empty(), b -> {
+            loaded = false;
+            activeEventCount = -1;
+            fetchNotices();
+            fetchEventCount();
+        }).dimensions(width - currentBtnSize - 10, height - currentBtnSize - 10, currentBtnSize, currentBtnSize).tooltip(Tooltip.of(Text.literal("새로고침"))).build());
 
         if (isCacheValid()) { loaded = true; loading = false; } else { if (!loading) fetchNotices(); }
+
+        if (activeEventCount == -1 || System.currentTimeMillis() - eventCountCachedAt > EVENT_TTL_MS) {
+            fetchEventCount();
+        }
+    }
+
+    @Override
+    public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
+        context.fill(0, 0, this.width, this.height, ModConfig.get().getBgColor());
     }
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+        renderBackground(context, mouseX, mouseY, delta);
         super.render(context, mouseX, mouseY, delta);
         int cx = width / 2; int uiTop = boxY - 40;
 
@@ -122,6 +141,37 @@ public class MainMenuScreen extends Screen {
         renderBigIcon(context, "📅", startX + currentBtnSize + gap, funcButtonY, currentBtnSize);
         renderBigIcon(context, "⚙", startX + (currentBtnSize + gap) * 2, funcButtonY, currentBtnSize);
         renderBigIcon(context, "🔄", width - currentBtnSize - 10, height - currentBtnSize - 10, currentBtnSize);
+
+        // ===== [수정] 얇고 깔끔한 흰색 테두리 배지 렌더링 =====
+        if (activeEventCount > 0) {
+            String countText = String.valueOf(activeEventCount);
+            int textW = textRenderer.getWidth(countText);
+
+            // 배지 크기 설정
+            int badgePadding = 4;
+            int badgeSize = Math.max(14, textW + badgePadding * 2);
+
+            // 이벤트 버튼의 우측 상단 좌표 계산
+            int eventBtnRight = startX + currentBtnSize + gap + currentBtnSize;
+            int eventBtnTop = funcButtonY;
+
+            // 배지 위치 조정
+            int bx1 = eventBtnRight - (badgeSize / 2) - 2;
+            int by1 = eventBtnTop - (badgeSize / 2) + 2;
+            int bx2 = bx1 + badgeSize;
+            int by2 = by1 + badgeSize;
+
+            // 1. 빨간색 배경
+            context.fill(bx1, by1, bx2, by2, 0xFFFF0000);
+
+            // 2. 얇은 흰색 테두리 (검은색 테두리 제거로 두께 최소화)
+            context.drawBorder(bx1, by1, badgeSize, badgeSize, 0xFFFFFFFF);
+
+            // 3. 중앙 숫자 렌더링
+            int textX = bx1 + (badgeSize - textW) / 2 + 1;
+            int textY = by1 + (badgeSize - 8) / 2 + 1;
+            context.drawText(textRenderer, countText, textX, textY, 0xFFFFFFFF, false);
+        }
     }
 
     private void renderBigIcon(DrawContext context, String icon, int x, int y, int size) {
@@ -150,7 +200,6 @@ public class MainMenuScreen extends Screen {
         loading = true;
         new Thread(() -> {
             try {
-                // ===== [수정] Supabase RPC 호출로 변경 =====
                 JsonObject obj = RankingScreen.Net.postJson(RankingScreen.SUPABASE_RPC_URL + "get_notices", "{}");
 
                 if (obj.has("ok") && obj.get("ok").getAsBoolean()) {
@@ -169,6 +218,36 @@ public class MainMenuScreen extends Screen {
                     MinecraftClient.getInstance().execute(() -> { page = 0; scrollAmount = 0; loaded = true; loading = false; });
                 }
             } catch (Exception e) { e.printStackTrace(); loading = false; }
+        }).start();
+    }
+
+    private void fetchEventCount() {
+        new Thread(() -> {
+            try {
+                JsonObject obj = RankingScreen.Net.postJson(RankingScreen.SUPABASE_RPC_URL + "get_event_list", "{}");
+
+                if (obj.has("ok") && obj.get("ok").getAsBoolean()) {
+                    JsonArray arr = obj.getAsJsonArray("events");
+                    MinecraftClient client = MinecraftClient.getInstance();
+                    String playerName = (client.player != null) ? client.player.getName().getString() : "";
+
+                    boolean isDev = Objects.equals("BKGpolar1", playerName);
+                    int count = 0;
+
+                    for (int i = 0; i < arr.size(); i++) {
+                        JsonObject o = arr.get(i).getAsJsonObject();
+                        String visibleValue = o.has("visible") ? o.get("visible").getAsString().trim() : "";
+                        boolean shouldShow = true;
+
+                        if ("false-dev".equalsIgnoreCase(visibleValue)) { if (isDev) shouldShow = false; }
+                        else if ("true-dev".equalsIgnoreCase(visibleValue)) { if (!isDev) shouldShow = false; }
+
+                        if (shouldShow) count++;
+                    }
+                    activeEventCount = count;
+                    eventCountCachedAt = System.currentTimeMillis();
+                }
+            } catch (Exception e) { e.printStackTrace(); }
         }).start();
     }
 }

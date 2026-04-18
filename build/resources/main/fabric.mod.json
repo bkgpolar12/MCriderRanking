@@ -1,17 +1,17 @@
 {
 	"schemaVersion": 1,
 	"id": "modid",
-	"version": "1.3",
+	"version": "1.4",
 	"name": "MCRiderRanking",
 	"description": "Daktoritang",
 	"authors": [
 		"BKGpolar"
 	],
 	"contact": {
-		"homepage": "https://www.youtube.com/@bkgp0lar",
-		"sources": "https://www.youtube.com/@bkgp0lar"
+		"homepage": "https://modrinth.com/mod/mcriderranking",
+		"sources": "https://github.com/bkgpolar12/MCriderRanking"
 	},
-	"license": "CC BY-ND",
+	"license": "MIT",
 	"icon": "assets/modid/icon.png",
 	"environment": "*",
 	"entrypoints": {
@@ -20,7 +20,11 @@
 		],
 		"client": [
 			"com.example.rankinglog.RankingLogMod"
-		]
+		],
+		"modmenu": [
+				"com.example.rankinglog.ModMenuIntegration"
+			]
+
 	},
 	"mixins": [
 		"modid.mixins.json",

@@ -3,6 +3,7 @@ package com.example.rankinglog;
 import com.google.gson.JsonObject;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.text.Text;
+import net.minecraft.text.HoverEvent; // ★ 반드시 이 경로(net.minecraft.text)여야 합니다!
 import net.minecraft.util.Util;
 
 import java.util.concurrent.CompletableFuture;
@@ -43,17 +44,29 @@ public class AutoSubmitter {
 
                         if (res != null && res.has("achievementUnlocked") && res.get("achievementUnlocked").getAsBoolean()) {
                             client.player.sendMessage(
-                                    Text.literal("§e트랙 업적 달성! F7키 - 프로필을 들어가서 확인할 수 있습니다"),
+                                    Text.literal("§e[MCRiderRanking] 트랙 업적 달성! F7키 - 프로필을 들어가서 확인할 수 있습니다"),
                                     false
                             );
                         }
 
                         boolean ok = res != null && res.has("ok") && res.get("ok").getAsBoolean();
                         if (ok) {
-                            client.player.sendMessage(
-                                    Text.literal("§a[MCRiderRanking] 등록 성공: " + track + " / " + timeStr + " / " + bodyName + " / " + engineName),
-                                    false
-                            );
+                            Text hoverText = Text.literal("§b[ 등록된 기록 정보 ]\n")
+                                    .append("§7트랙: §f" + track + "\n")
+                                    .append("§7기록: §f" + timeStr + "\n")
+                                    .append("§7카트: §f" + bodyName + "\n")
+                                    .append("§7엔진: §f" + engineName);
+
+                            // ★ 핵심 변경점: new HoverEvent(...) 대신 new HoverEvent.ShowText(...)를 사용합니다!
+                            Text message = Text.literal("§a[MCRiderRanking] 등록 성공! F7키 - 랭킹 보기를 눌러서 확인할 수 있습니다 ")
+                                    .append(
+                                            Text.literal("§e§n(마우스를 올려 요약 확인)")
+                                                    .styled(style -> style
+                                                            .withHoverEvent(new HoverEvent.ShowText(hoverText))
+                                                    )
+                                    );
+
+                            client.player.sendMessage(message, false);
                         } else {
                             String err = (res != null && res.has("error")) ? res.get("error").getAsString() : "unknown";
 
@@ -64,7 +77,7 @@ public class AutoSubmitter {
                                 );
                             } else if ("BAD JSON RESPONSE".equalsIgnoreCase(err)) {
                                 client.player.sendMessage(
-                                        Text.literal("[MCRiderRanking] 등록 실패 : 응답이 유효한 JSON이 아닙니다. 모드 최신 버전을 확인하세요."),
+                                        Text.literal("[MCRiderRanking] 등록 실패 : 응답이 유효한 JSON이 아닙니다. 모드의 최신 버전을 확인하세요."),
                                         false
                                 );
                             } else {

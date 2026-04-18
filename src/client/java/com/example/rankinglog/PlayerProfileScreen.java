@@ -267,7 +267,10 @@ public class PlayerProfileScreen extends Screen {
 
     @Override protected void applyBlur() { }
     @Override public void blur() { }
-    @Override public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) { context.fill(0, 0, this.width, this.height, 0x66000000); }
+    @Override
+    public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
+        context.fill(0, 0, this.width, this.height, ModConfig.get().getBgColor());
+    }
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
@@ -294,6 +297,11 @@ public class PlayerProfileScreen extends Screen {
         int rightPadX = splitX + 15; int rightPadY = headerY + 15;
         context.drawTextWithShadow(this.textRenderer, "§e[ 자기 소개 ]", rightPadX, rightPadY, 0xFFFFFF);
         achHits.clear();
+
+        // 툴팁 상태 저장을 위한 변수
+        int hoveredDateIndex = -1;
+        int hoveredTireIndex = -1;
+        String hoveredModeText = null;
 
         if (!repPanelOpen) {
             if (loading) { context.drawTextWithShadow(this.textRenderer, "불러오는 중...", rightPadX, rightPadY + 18, 0xAAAAAA); }
@@ -344,15 +352,10 @@ public class PlayerProfileScreen extends Screen {
                 context.drawTextWithShadow(this.textRenderer, "[ " + selectedAchievement.full() + " ]", (this.width - titleW) / 2, tableY + 15, achColor);
                 List<OrderedText> descLines = this.textRenderer.wrapLines(Text.literal(selectedAchievement.desc()), tableW - 30);
                 int dy = tableY + 40; for (OrderedText line : descLines) { context.drawTextWithShadow(this.textRenderer, line, tableX + 15, dy, 0xDDDDDD); dy += 12; }
-                if (prevBtn != null) prevBtn.visible = false; if (nextBtn != null) nextBtn.visible = false;
             } else {
                 context.fill(tableX, tableY, tableX + tableW, tableY + tableH, 0x66000000); drawRectBorder(context, tableX, tableY, tableW, tableH, 0xFF222222);
-                updatePaginationButtons();
-                if (loading) { context.drawCenteredTextWithShadow(this.textRenderer, "불러오는 중...", this.width / 2, tableY + 30, 0xFFFFFF); }
-                else if (error != null) { String displayError = error.toLowerCase().contains("http") ? "이 버전은 서비스 종료 되었습니다. 최신 버전을 이용해 주세요." : error; context.drawCenteredTextWithShadow(this.textRenderer, "오류: " + displayError, this.width / 2, tableY + 30, 0xFF5555); }
-                else if (records.isEmpty()) { context.drawCenteredTextWithShadow(this.textRenderer, "해당 플레이어 기록이 없습니다.", this.width / 2, tableY + 30, 0xFFFFFF); }
-                else {
-                    modeHits.clear(); dateHits.clear(); tireHits.clear(); int hoveredDateIndex = -1; int hoveredModeIndex = -1; int hoveredTireIndex = -1;
+                if (!loading && error == null && !records.isEmpty()) {
+                    modeHits.clear(); dateHits.clear(); tireHits.clear();
                     int smx = (int) (mouseX / TABLE_SCALE); int smy = (int) (mouseY / TABLE_SCALE);
                     context.getMatrices().push(); context.getMatrices().scale(TABLE_SCALE, TABLE_SCALE, 1.0f);
                     int sx = (int) (tableX / TABLE_SCALE); int sy = (int) (tableY / TABLE_SCALE); int sW = (int) (tableW / TABLE_SCALE); int headerRowY = sy + 8;
@@ -363,29 +366,39 @@ public class PlayerProfileScreen extends Screen {
 
                     for (int i = start; i < end; i++) {
                         RecordRow r = records.get(i); int idx = i - start; int ry = startY + idx * ROW_H;
-                        if ((idx & 1) == 1) { context.fill((int)(tableX / TABLE_SCALE) + 1, ry - 2, (int)((tableX + tableW) / TABLE_SCALE) - 1, ry + ROW_H - 1, 0x22000000); }
+                        if ((idx & 1) == 1) context.fill((int)(tableX / TABLE_SCALE) + 1, ry - 2, (int)((tableX + tableW) / TABLE_SCALE) - 1, ry + ROW_H - 1, 0x22000000);
                         String date = formatDateYY(r.submittedAtMs()); String eng = normalizeEngine(r.engineName()); String modeShort = formatModePlusCount(r.modes());
-                        int dateW = textRenderer.getWidth(date); DateHit dh = new DateHit(colDate, ry - 2, colDate + dateW, ry + 10, r.submittedAtMs()); dateHits.add(dh); boolean hoverDate = dh.hit(smx, smy);
-                        int modeW = textRenderer.getWidth(modeShort); ModeHit mh = new ModeHit(colMode, ry - 2, colMode + modeW, ry + 10, r.modes()); modeHits.add(mh); boolean hoverMode = mh.hit(smx, smy);
-                        String bodyLabel = TireUtil.composeBodyLabel(r.bodyName(), r.tireName()); int bodyW = textRenderer.getWidth(bodyLabel); TireHit th = new TireHit(colBody, ry - 2, colBody + bodyW, ry + 10, r.tireName()); tireHits.add(th); boolean hoverTire = th.hit(smx, smy);
+                        int dateW = textRenderer.getWidth(date); DateHit dh = new DateHit(colDate, ry - 2, colDate + dateW, ry + 10, r.submittedAtMs()); dateHits.add(dh);
+                        int modeW = textRenderer.getWidth(modeShort); ModeHit mh = new ModeHit(colMode, ry - 2, colMode + modeW, ry + 10, r.modes()); modeHits.add(mh);
+                        String bodyLabel = TireUtil.composeBodyLabel(r.bodyName(), r.tireName()); int bodyW = textRenderer.getWidth(bodyLabel); TireHit th = new TireHit(colBody, ry - 2, colBody + bodyW, ry + 10, r.tireName()); tireHits.add(th);
 
-                        if (hoverDate) hoveredDateIndex = i; if (hoverMode) hoveredModeIndex = i; if (hoverTire) hoveredTireIndex = i;
-                        int dateColor = hoverDate ? 0xFFFFEE88 : 0xFFFFFF;
-                        context.drawTextWithShadow(textRenderer, date, colDate, ry, dateColor); context.drawTextWithShadow(textRenderer, r.track(), colTrack, ry, 0xFFFFFF); context.drawTextWithShadow(textRenderer, r.timeStr(), colTime, ry, 0xFFFFFF); context.drawTextWithShadow(textRenderer, bodyLabel, colBody, ry, 0xFFFFFF); context.drawTextWithShadow(textRenderer, eng, colEngine, ry, 0xFFFFFF); context.drawTextWithShadow(textRenderer, modeShort, colMode, ry, 0xFFFFFF);
+                        if (dh.hit(smx, smy)) hoveredDateIndex = i;
+                        if (th.hit(smx, smy)) hoveredTireIndex = i;
+                        if (mh.hit(smx, smy)) hoveredModeText = "모드: " + r.modes();
+
+                        context.drawTextWithShadow(textRenderer, date, colDate, ry, (dh.hit(smx, smy) ? 0xFFFFEE88 : 0xFFFFFF));
+                        context.drawTextWithShadow(textRenderer, r.track(), colTrack, ry, 0xFFFFFF); context.drawTextWithShadow(textRenderer, r.timeStr(), colTime, ry, 0xFFFFFF); context.drawTextWithShadow(textRenderer, bodyLabel, colBody, ry, 0xFFFFFF); context.drawTextWithShadow(textRenderer, eng, colEngine, ry, 0xFFFFFF); context.drawTextWithShadow(textRenderer, modeShort, colMode, ry, 0xFFFFFF);
                     }
                     context.getMatrices().pop();
-                    if (hoveredDateIndex >= 0) drawTooltipBox(context, mouseX, mouseY, "등록: " + formatDateTimeFull(records.get(hoveredDateIndex).submittedAtMs()));
-                    else if (hoveredTireIndex >= 0) drawTooltipBox(context, mouseX, mouseY, TireUtil.tooltipName(records.get(hoveredTireIndex).tireName()));
-                    else { for (ModeHit h : modeHits) { if (h.hit(smx, smy)) { drawTooltipBox(context, mouseX, mouseY, "모드: " + h.fullText); break; } } }
+                } else {
+                    if (loading) context.drawCenteredTextWithShadow(this.textRenderer, "불러오는 중...", this.width / 2, tableY + 30, 0xFFFFFF);
+                    else if (error != null) context.drawCenteredTextWithShadow(this.textRenderer, "오류 발생", this.width / 2, tableY + 30, 0xFF5555);
                 }
             }
         }
+
         if (!repPanelOpen && !achievementsExpanded && !showAchievementDesc) {
             int totalPages = Math.max(1, (records.size() + rowsPerPage - 1) / rowsPerPage);
             context.drawCenteredTextWithShadow(this.textRenderer, String.format("페이지 %d / %d", (page + 1), totalPages), this.width / 2, this.height - 26, 0xAAAAAA);
         }
+
         super.render(context, mouseX, mouseY, delta);
         if (repPanelOpen) renderRepDropdown(context, mouseX, mouseY);
+
+        // ★ 최상단 툴팁 레이어
+        if (hoveredDateIndex >= 0) drawTooltipBox(context, mouseX, mouseY, "등록: " + formatDateTimeFull(records.get(hoveredDateIndex).submittedAtMs()));
+        else if (hoveredTireIndex >= 0) drawTooltipBox(context, mouseX, mouseY, TireUtil.tooltipName(records.get(hoveredTireIndex).tireName()));
+        else if (hoveredModeText != null) drawTooltipBox(context, mouseX, mouseY, hoveredModeText);
     }
 
     private void renderRepDropdown(DrawContext context, int mouseX, int mouseY) {

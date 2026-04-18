@@ -19,16 +19,21 @@ public class EventOptionSelectScreen extends Screen {
 
     private static List<EventEntry> cachedEvents = null;
     private static long cachedAt = 0;
-    private static final long TTL_MS = 60_000;
+
 
     private static boolean isCacheValid() {
         if (cachedEvents == null) return false;
-        return System.currentTimeMillis() - cachedAt <= TTL_MS;
+        // ModConfig의 설정을 실시간으로 반영
+        return System.currentTimeMillis() - cachedAt <= ModConfig.get().getCacheTtlMs();
+    }
+
+    public static void clearCache() {
+        cachedEvents = null;
     }
 
     private final Screen parent;
     private final List<EventEntry> events = new ArrayList<>();
-    private static final Set<String> ALLOWED_PLAYERS = Set.of("BKGpolar1");
+    private static final Set<String> ALLOWED_PLAYERS = Set.of("BKGpolar");
     private boolean loading = true;
 
     private static final int OUTER_PAD = 15;
@@ -119,11 +124,16 @@ public class EventOptionSelectScreen extends Screen {
     }
 
     @Override
+    public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
+        context.fill(0, 0, this.width, this.height, ModConfig.get().getBgColor());
+    }
+
+    @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+        renderBackground(context, mouseX, mouseY, delta);
         int screenW = this.width; int screenH = this.height;
         int cardW = screenW - 60; int left = (screenW - cardW) / 2; int right = left + cardW; int centerX = screenW / 2;
 
-        context.fill(0, 0, screenW, screenH, 0x88000000);
         context.fill(OUTER_PAD, 8, screenW - OUTER_PAD, 28, 0xFF000000);
         String title = "현재 진행 중인 이벤트";
         context.drawText(textRenderer, title, centerX - textRenderer.getWidth(title) / 2, 13, 0xFFFFAA00, false);

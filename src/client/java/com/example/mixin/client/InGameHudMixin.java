@@ -374,6 +374,18 @@ public class InGameHudMixin {
 		MinecraftClient client = MinecraftClient.getInstance();
 		var me = client.player;
 
+		// 1. USE_PLAYER_LIMIT가 켜져 있는 경우: 플레이어 이름만 확인하고 모든 서버 허용
+		if (USE_PLAYER_LIMIT) {
+			if (isAllowedPlayer()) {
+				showServerDebugOnce("multi_ok_forced", "§a[MCRiderRanking] 플레이어 제한 모드 활성화 (모든 서버 기록 가능)");
+				return true;
+			} else {
+				showServerDebugOnce("blocked_player", "§c[MCRiderRanking] 권한이 없는 플레이어입니다. (자동 기록 비활성화)");
+				return false;
+			}
+		}
+
+		// 2. USE_PLAYER_LIMIT가 꺼져 있는 경우: 기존 서버 검증 로직 수행
 		if (client.getServer() != null) {
 			showServerDebugOnce("single", "§e[MCRiderRanking] 통합 서버(싱글플레이) 감지 -> 자동 기록 비활성화");
 			return false;
@@ -381,29 +393,20 @@ public class InGameHudMixin {
 
 		ServerInfo info = client.getCurrentServerEntry();
 		if (info == null || info.address == null) {
-			showServerDebugOnce("none", "§c[MCRiderRanking] 서버 정보 없음 (접속 전/나가는 중/로딩 중)");
+			showServerDebugOnce("none", "§c[MCRiderRanking] 서버 정보 없음");
 			return false;
 		}
 
 		String addr = info.address.trim().toLowerCase();
 		String allowed = ALLOWED_ADDRESS.trim().toLowerCase();
-		String devserver = ALLOWED_ADDRESS1.trim().toLowerCase();
 
-		boolean ok = addr.equals(allowed) || (USE_PLAYER_LIMIT && addr.equals(devserver));
-
-		if (!ok) {
-			String key = "multi_fail:" + addr;
-			if (me != null && isNewKey(key)) {
-				boolean addrHasPort = addr.contains(":");
-				boolean allowedHasPort = allowed.contains(":");
-				if (addrHasPort != allowedHasPort) {
-					DebugLog.chat("§e[MCRiderRanking] 포트 포함 여부가 달라서 불일치일 수 있음");
-				}
-			}
-			showServerDebugOnce(key, "§c[MCRiderRanking] 자동 기록 비활성화 (허용되지 않은 서버)");
+		// 주소 일치 여부 확인
+		if (!addr.equals(allowed)) {
+			showServerDebugOnce("multi_fail:" + addr, "§c[MCRiderRanking] 자동 기록 비활성화 (허용되지 않은 서버)");
 			return false;
 		}
 
+		// 실제 서버 IP 및 포트 검증 (DNS 우회 방지)
 		ClientPlayNetworkHandler networkHandler = client.getNetworkHandler();
 		if (networkHandler != null && networkHandler.getConnection() != null) {
 			SocketAddress socketAddress = networkHandler.getConnection().getAddress();
@@ -414,20 +417,13 @@ public class InGameHudMixin {
 					int realPort = inetAddress.getPort();
 
 					if (!realIp.equals("193.122.114.163") || realPort != 60819) {
-						showServerDebugOnce("fake_server_ip", "§c[MCRiderRanking] 가짜 서버(DNS 우회) 감지됨! (기록 차단)");
+						showServerDebugOnce("fake_server_ip", "§c[MCRiderRanking] 가짜 서버 감지됨! (기록 차단)");
 						return false;
 					}
 				}
 			}
 		} else {
 			return false;
-		}
-
-		if (USE_PLAYER_LIMIT) {
-			if (!isAllowedPlayer()) {
-				showServerDebugOnce("blocked_player", "§c[MCRiderRanking] 권한이 없는 플레이어입니다. (자동 기록 비활성화)");
-				return false;
-			}
 		}
 
 		showServerDebugOnce("multi_ok:" + addr, "§a[MCRiderRanking] 자동 기록 활성화");

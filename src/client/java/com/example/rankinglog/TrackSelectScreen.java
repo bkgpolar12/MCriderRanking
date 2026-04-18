@@ -146,7 +146,7 @@ public class TrackSelectScreen extends Screen {
 
     @Override
     public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
-        context.fill(0, 0, this.width, this.height, 0x88000000);
+        context.fill(0, 0, this.width, this.height, ModConfig.get().getBgColor());
     }
 
     private void drawRectBorder(DrawContext context, int x, int y, int w, int h, int color) {

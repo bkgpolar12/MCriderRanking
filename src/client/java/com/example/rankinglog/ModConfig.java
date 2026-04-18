@@ -23,8 +23,29 @@ public final class ModConfig {
     // ===== 설정 값들 =====
     public boolean autoSubmitEnabled = true;
 
-    //디버그 로그(채팅 출력) 토글
+    // 디버그 로그(채팅 출력) 토글
     public boolean debugLogEnabled = false;
+
+    // 캐시 유지 시간 (단위: 초, 기본값 60초)
+    public int cacheTtlSeconds = 60;
+
+    // 밀리초 단위로 변환해서 반환하는 메서드
+    public long getCacheTtlMs() {
+        return (long) Math.clamp(cacheTtlSeconds, 10, 600) * 1000L;
+    }
+
+    // 카트바디 인식 모드 (0: 오리지널, 1: 엄격)
+    public int bodyScanMode = 0;
+
+    // 배경 불투명도 (0 ~ 255, 기본값 110)
+    public int backgroundAlpha = 110;
+
+    // 배경 불투명도를 바탕으로 배경색(ARGB)을 계산해서 반환하는 메서드
+    public int getBgColor() {
+        // alpha 값을 0~255 사이로 제한하고, 검은색(0x000000)과 합성합니다.
+        int alpha = Math.clamp(backgroundAlpha, 0, 255);
+        return (alpha << 24);
+    }
 
     // 싱글톤
     private static ModConfig INSTANCE = new ModConfig();

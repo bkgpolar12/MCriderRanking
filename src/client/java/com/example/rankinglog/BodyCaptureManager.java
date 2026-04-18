@@ -1,58 +1,40 @@
 package com.example.rankinglog;
 
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.entity.Entity;
 import net.minecraft.entity.attribute.EntityAttributeInstance;
 import net.minecraft.entity.attribute.EntityAttributes;
 import net.minecraft.entity.decoration.DisplayEntity;
 import net.minecraft.text.Text;
 import net.minecraft.text.TextColor;
 import net.minecraft.util.Identifier;
-import net.minecraft.util.math.Box;
+
+import java.util.List;
+import java.util.Set;
 
 public final class BodyCaptureManager {
 
     private BodyCaptureManager() {}
 
-    // ===== 상태 =====
-    private static boolean active = false;            // 캡처 진행중
-    private static boolean capturedThisRace = false;  // 이번 판에서 "종료 확정"까지 했는지
+    private static boolean active = false;
+    private static boolean capturedThisRace = false;
+    private static boolean gracePeriod = false;
+    private static long graceStartMs = 0;
 
-    // 스캔 주기
-    private static final long BODY_SCAN_INTERVAL_MS = 150;
+    private static final long BODY_SCAN_INTERVAL_MS = 100;
     private static long lastBodyScanMs = 0;
 
-    // 제출용 캐시 (최종으로 쓸 값)
     private static String cachedKartBodyName = null;
-
-    // ✅ 색상 캐시 (최종으로 쓸 값)
     private static String cachedKartColor = null;
-
-    // 타이어 캐시 (최종으로 쓸 값)
     private static String cachedTireName = null;
 
-    // 손 감지 캐시
-    private static String cachedOffhandName = null;   //왼손 마지막 유효 이름
-    private static String cachedMainhandName = null;  //오른손 마지막 유효 이름
-
-    // 중복 갱신 방지 키
-    private static String lastOffhandKey = null;
-    private static String lastMainhandKey = null;
-
-    //item_display 중복 갱신 방지 키
     private static String lastItemDisplayKey = null;
-
-    // 타이어 중복 로그 방지 키
     private static String lastTireKey = null;
 
-    // 로그 스팸 방지
     private static long lastBodyLogMs = 0;
     private static String lastBodyLogValue = null;
     private static final long LOG_COOLDOWN_MS = 600;
 
-    //item_display 탐색 반경(블록)
-    private static final double ITEM_DISPLAY_SCAN_RADIUS = 16.0;
-
-    // kart-tire modifier id
     private static final Identifier KART_TIRE_ID = Identifier.of("minecraft", "kart-tire");
 
     public static String getCachedKartBodyNameOrUnknown() {
@@ -60,299 +42,180 @@ public final class BodyCaptureManager {
         return cachedKartBodyName;
     }
 
-    // ✅ 서버로 보낼 때 사용할 색상 호출 메서드
     public static String getCachedKartColorOrHex() {
         if (cachedKartColor == null || cachedKartColor.trim().isEmpty()) return "#FFFFFF";
         return cachedKartColor;
     }
 
-    /** HUD 타이틀/커스텀 스크린 텍스트에서 "로딩중..." 감지하면 호출 */
     public static void onLoadingDetected(String sourceTag) {
-        if (capturedThisRace) {
-            capturedThisRace = false;
-        }
+        if (capturedThisRace) capturedThisRace = false;
         if (active) return;
 
         active = true;
-
-        // 스캔 간격 초기화(시작 직후 바로 스캔되게)
+        gracePeriod = false;
         lastBodyScanMs = 0;
 
-        // 캐시 초기화
         cachedKartBodyName = null;
-        cachedKartColor = null; // ✅ 색상 초기화
+        cachedKartColor = null;
         cachedTireName = null;
-
-        cachedOffhandName = null;
-        cachedMainhandName = null;
-
-        lastOffhandKey = null;
-        lastMainhandKey = null;
         lastItemDisplayKey = null;
         lastTireKey = null;
 
         if (DebugLog.enabled()) {
-            DebugLog.chat("§7[Body] 캡처 시작 (" + sourceTag + ")");
+            DebugLog.chat("§7[Body] 캡처 활성화 (" + sourceTag + ")");
         }
     }
 
-    /** HUD 타이틀이 "3"이 되면 종료 확정 */
     public static void onTitle3() {
         if (!active) return;
 
-        active = false;
-        capturedThisRace = true;
-
-        if (cachedKartBodyName == null || cachedKartBodyName.trim().isEmpty()) {
-            cachedKartBodyName = "UNKNOWN";
-        }
-        if (cachedTireName == null || cachedTireName.trim().isEmpty()) {
-            cachedTireName = "UNKNOWN";
-        }
-
-        logBody("§a[Body] 캡처 종료(title=3) : " + safeShow(cachedKartBodyName) + " | Tire=" + safeShow(cachedTireName));
-    }
-
-    /** "완주 실패" 등 실패 상황에서 종료 확정 */
-    public static void onRaceFailed() {
-        if (!active && capturedThisRace) return;
-
-        active = false;
-        capturedThisRace = true;
-
-        if (cachedKartBodyName == null || cachedKartBodyName.trim().isEmpty()) {
-            cachedKartBodyName = "UNKNOWN";
-        }
-        if (cachedTireName == null || cachedTireName.trim().isEmpty()) {
-            cachedTireName = "UNKNOWN";
-        }
-
-        logBody("§c[Body] 캡처 종료(완주 실패) : " + safeShow(cachedKartBodyName) + " | Tire=" + safeShow(cachedTireName));
-    }
-
-    // ✅ 공식 라이브러리를 활용한 안전한 색상 추출기
-    private static String extractColorHex(Text text) {
-        if (text == null) return "#FFFFFF";
-
-        // 1. 최상위 스타일에 색상이 지정된 경우
-        TextColor rootColor = text.getStyle().getColor();
-        if (rootColor != null) {
-            return String.format("#%06X", rootColor.getRgb());
-        }
-
-        // 2. 자식 노드(Siblings)에 색상이 지정된 경우 순회하며 탐색
-        for (Text sibling : text.getSiblings()) {
-            TextColor siblingColor = sibling.getStyle().getColor();
-            if (siblingColor != null) {
-                String content = sibling.getString().trim();
-                if (!content.isEmpty()) {
-                    return String.format("#%06X", siblingColor.getRgb());
+        if (cachedKartBodyName != null && !cachedKartBodyName.equals("UNKNOWN")) {
+            finishCapture("title=3 (Found)");
+        } else {
+            if (!gracePeriod) {
+                gracePeriod = true;
+                graceStartMs = System.currentTimeMillis();
+                if (DebugLog.enabled()) {
+                    DebugLog.chat("§e[Body] '3' 감지! RootVehicle 탐색 시작... (최대 2초 연장)");
                 }
             }
         }
-
-        return "#FFFFFF";
     }
 
-    /** InGameHud render에서 매 프레임 호출해도 됨(active일 때만 내부에서 스캔) */
+    private static void finishCapture(String reason) {
+        active = false;
+        gracePeriod = false;
+        capturedThisRace = true;
+
+        if (cachedKartBodyName == null) cachedKartBodyName = "UNKNOWN";
+        if (cachedTireName == null) cachedTireName = "UNKNOWN";
+
+        logBody("§a[Body] 캡처 종료(" + reason + ") : " + safeShow(cachedKartBodyName) + " | Tire=" + safeShow(cachedTireName));
+    }
+
+    public static void onRaceFailed() {
+        if (!active && capturedThisRace) return;
+        finishCapture("완주 실패");
+    }
+
     public static void tickScan() {
         if (!active) return;
 
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client.player == null || client.world == null) return;
-
         long now = System.currentTimeMillis();
+
+        if (gracePeriod && (now - graceStartMs > 2000)) {
+            finishCapture("Grace Period Timeout");
+            return;
+        }
+
         if (now - lastBodyScanMs < BODY_SCAN_INTERVAL_MS) return;
         lastBodyScanMs = now;
 
-        // 0) 타이어는 매번 갱신 시도 (동시 감지)
         readTireNameAndCacheLast();
 
-        // 1) 손 감지는 "항상" 먼저 갱신해둔다 (동시 감지)
-        readOffhandNameAndCacheLast();
-        readMainhandNameAndCacheLast();
-
-        // 2) item_display customName 시도
-        String displayName = readNearestItemDisplayCustomNameIfPresent();
+        String displayName = readPassengerDataCarrier();
         if (displayName != null && !displayName.trim().isEmpty()) {
             cachedKartBodyName = displayName;
-            logBody("§b[Body] ITEM_DISPLAY 감지: " + cachedKartBodyName + " (" + cachedKartColor + ")");
-            return;
-        }
-
-        // 3) item_display가 null/빈값이면 "미리 캐싱된 손 값" 사용 (왼손 우선)
-        if (cachedOffhandName != null && !cachedOffhandName.trim().isEmpty()) {
-            cachedKartBodyName = cachedOffhandName;
-            logBody("§a[Body] OFFHAND fallback: " + cachedKartBodyName + " (" + cachedKartColor + ")");
-            return;
-        }
-
-        if (cachedMainhandName != null && !cachedMainhandName.trim().isEmpty()) {
-            cachedKartBodyName = cachedMainhandName;
-            logBody("§e[Body] MAINHAND fallback: " + cachedKartBodyName + " (" + cachedKartColor + ")");
+            if (gracePeriod) {
+                finishCapture("Grace Period Match");
+            }
         }
     }
 
-    // ===== 내부 유틸 =====
+    private static String readPassengerDataCarrier() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.player == null) return null;
 
-    /** kart-tire modifier value -> 타이어 이름으로 캐싱 */
+        // 1. 탑승 상태 감지 (RootVehicle == player면 탑승하지 않은 상태)
+        Entity vehicle = client.player.getRootVehicle();
+        if (vehicle == client.player) {
+            return null;
+        }
+
+        try {
+            // 2. 승객 리스트를 가져와 foreach로 순회 (효율성 개선)
+            List<Entity> passengers = vehicle.getPassengerList();
+            for (Entity passenger : passengers) {
+                if (passenger == client.player) continue;
+
+                if (passenger instanceof DisplayEntity.ItemDisplayEntity display) {
+                    Text customText = display.getCustomName();
+                    String customName = (customText != null) ? customText.getString() : "";
+                    Set<String> tags = display.getCommandTags();
+
+                    String stackName = (display.getItemStack() != null) ? display.getItemStack().getName().getString() : "";
+
+                    // mcrider-datacarrier 식별 조건
+                    boolean isDataCarrier = "mcrider-datacarrier".equalsIgnoreCase(customName)
+                            || tags.contains("mcrider-datacarrier")
+                            || stackName.contains("mcrider-datacarrier");
+
+                    if (isDataCarrier) {
+                        String targetName = customName;
+                        Text targetText = customText;
+
+                        // 식별자가 이름이나 태그인 경우, 실제 카트 이름은 아이템 이름에서 가져옴
+                        if ("mcrider-datacarrier".equalsIgnoreCase(customName) || tags.contains("mcrider-datacarrier")) {
+                            if (display.getItemStack() != null && !display.getItemStack().isEmpty()) {
+                                targetText = display.getItemStack().getName();
+                                targetName = targetText.getString();
+                            }
+                        }
+
+                        if (targetName == null || targetName.trim().isEmpty()) continue;
+
+                        cachedKartColor = extractColorHex(targetText);
+                        String key = display.getId() + "|" + targetName;
+                        if (!key.equals(lastItemDisplayKey)) {
+                            lastItemDisplayKey = key;
+                            if (DebugLog.enabled()) {
+                                DebugLog.chat("§b§l[Body] 매칭 성공: " + targetName);
+                            }
+                        }
+                        return targetName;
+                    }
+                }
+            }
+        } catch (Throwable e) {
+            if (DebugLog.enabled()) DebugLog.chat("§c[Error] 데이터 추출 실패: " + e.getMessage());
+        }
+        return null;
+    }
+
+    private static String extractColorHex(Text text) {
+        if (text == null) return "#FFFFFF";
+        TextColor color = text.getStyle().getColor();
+        if (color != null) return String.format("#%06X", color.getRgb());
+        for (Text s : text.getSiblings()) {
+            TextColor sc = s.getStyle().getColor();
+            if (sc != null && !s.getString().trim().isEmpty()) return String.format("#%06X", sc.getRgb());
+        }
+        return "#FFFFFF";
+    }
+
     private static void readTireNameAndCacheLast() {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.player == null) return;
-
         try {
             EntityAttributeInstance inst = client.player.getAttributeInstance(EntityAttributes.EXPLOSION_KNOCKBACK_RESISTANCE);
             if (inst == null) return;
 
             Double tireValue = null;
-
-            // 1.21.5+build.1: EntityAttributeModifier는 record accessor (id(), value(), operation())
             for (var mod : inst.getModifiers()) {
-                Identifier id = mod.id();
-                if (KART_TIRE_ID.equals(id)) {
+                if (KART_TIRE_ID.equals(mod.id())) {
                     tireValue = mod.value();
                     break;
                 }
             }
-
             if (tireValue == null) return;
 
             String tireName = TireUtil.nameFromValue(tireValue);
             String key = KART_TIRE_ID + "|" + tireName;
-
             if (key.equals(lastTireKey)) return;
+
             lastTireKey = key;
-
             cachedTireName = tireName;
-
-            if (DebugLog.enabled()) DebugLog.chat("§7[Tire] value=" + tireValue + " => " + tireName);
-        } catch (Throwable ignored) {
-            // ignore
-        }
-    }
-
-    /**
-     * 플레이어 주변에서 가장 가까운 item_display 엔티티를 찾고,
-     * 그 엔티티의 CustomName을 반환한다.
-     * - 없거나 CustomName이 없으면 null 반환
-     */
-    private static String readNearestItemDisplayCustomNameIfPresent() {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client.player == null || client.world == null) return null;
-
-        try {
-            Box box = client.player.getBoundingBox().expand(ITEM_DISPLAY_SCAN_RADIUS);
-
-            DisplayEntity.ItemDisplayEntity nearest = null;
-            double bestDistSq = Double.MAX_VALUE;
-
-            for (DisplayEntity.ItemDisplayEntity e : client.world.getEntitiesByClass(
-                    DisplayEntity.ItemDisplayEntity.class,
-                    box,
-                    entity -> true
-            )) {
-                double d = client.player.squaredDistanceTo(e);
-                if (d < bestDistSq) {
-                    bestDistSq = d;
-                    nearest = e;
-                }
-            }
-
-            if (nearest == null) return null;
-
-            Text custom = nearest.getCustomName();
-            if (custom == null) return null;
-
-            String name = safeItemName(custom.getString());
-            if (name == null) return null;
-
-            // 추가 조건: 이름이 "mcrider-modelsaddle" 이면 무시하고 null 반환
-            if (name.equalsIgnoreCase("mcrider-modelsaddle")) {
-                if (DebugLog.enabled()) {
-                    DebugLog.chat("§7[Body] ItemDisplay 무시됨 (modelsaddle)");
-                }
-                return null; // 손 감지 fallback 사용하게 됨
-            }
-
-            // ✅ 색상 추출 후 전역 변수(cachedKartColor)에 곧바로 저장
-            cachedKartColor = extractColorHex(custom);
-
-            // 중복 로그 방지
-            String key = nearest.getId() + "|" + name;
-            if (!key.equals(lastItemDisplayKey)) {
-                lastItemDisplayKey = key;
-                if (DebugLog.enabled()) {
-                    DebugLog.chat("§7[Body] ItemDisplay raw=" + name + " color=" + cachedKartColor);
-                }
-            }
-
-            return name;
-
-        } catch (Throwable ignored) {
-            return null;
-        }
-    }
-
-    private static void readOffhandNameAndCacheLast() {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client.player == null) return;
-
-        try {
-            var stack = client.player.getOffHandStack();
-            if (stack == null || stack.isEmpty()) return;
-
-            String name = safeItemName(stack.getName().getString());
-            if (name == null) return;
-
-            String colorHex = extractColorHex(stack.getName());
-
-            String key = stack.getItem().toString() + "|" + name;
-            if (key.equals(lastOffhandKey)) return;
-
-            lastOffhandKey = key;
-            cachedOffhandName = name;
-
-            // ✅ 색상 추출 후 전역 변수(cachedKartColor)에 곧바로 저장
-            cachedKartColor = colorHex;
-
-            if (DebugLog.enabled()) DebugLog.chat("§7[Body] Offhand raw=" + cachedOffhandName + " color=" + cachedKartColor);
-        } catch (Throwable ignored) {
-            // ignore
-        }
-    }
-
-    private static void readMainhandNameAndCacheLast() {
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client.player == null) return;
-
-        try {
-            var stack = client.player.getMainHandStack();
-            if (stack == null || stack.isEmpty()) return;
-
-            String name = safeItemName(stack.getName().getString());
-            if (name == null) return;
-
-            String colorHex = extractColorHex(stack.getName());
-
-            String key = stack.getItem().toString() + "|" + name;
-            if (key.equals(lastMainhandKey)) return;
-
-            lastMainhandKey = key;
-            cachedMainhandName = name;
-
-            // ✅ 색상 추출 후 전역 변수(cachedKartColor)에 곧바로 저장
-            cachedKartColor = colorHex;
-
-            if (DebugLog.enabled()) DebugLog.chat("§7[Body] Mainhand raw=" + cachedMainhandName + " color=" + cachedKartColor);
-        } catch (Throwable ignored) {
-            // ignore
-        }
-    }
-
-    private static String safeItemName(String raw) {
-        if (raw == null) return null;
-        String s = raw.trim();
-        return s.isEmpty() ? null : s;
+        } catch (Throwable ignored) {}
     }
 
     private static void logBody(String msg) {
@@ -367,7 +230,6 @@ public final class BodyCaptureManager {
     private static String safeShow(String v) {
         if (v == null) return "null";
         String s = v.replace("\n", " ").replaceAll("\\s+", " ").trim();
-        if (s.isEmpty()) return "(blank)";
-        return s;
+        return s.isEmpty() ? "(blank)" : s;
     }
 }

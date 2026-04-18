@@ -958,6 +958,7 @@ public class RankingScreen extends Screen {
         renderBackground(context, mouseX, mouseY, delta);
         renderHeader(context);
 
+        // 드롭다운 패널은 테이블보다 아래 레이어에 있되 버튼보다는 위에 있어야 함
         if (tirePanelOpen) renderTireDropdown(context, mouseX, mouseY);
         if (enginePanelOpen) renderEngineDropdown(context, mouseX, mouseY);
         if (modePanelOpen) renderModeDropdown(context, mouseX, mouseY);
@@ -984,22 +985,8 @@ public class RankingScreen extends Screen {
             return;
         }
         if (error != null) {
-            String displayError = error;
-            if (error.toLowerCase().contains("http")) {
-                displayError = "이 버전은 서비스 종료 되었습니다. 최신 버전을 이용해 주세요.";
-            }
-
+            String displayError = error.toLowerCase().contains("http") ? "이 버전은 서비스 종료 되었습니다. 최신 버전을 이용해 주세요." : error;
             context.drawCenteredTextWithShadow(this.textRenderer, "오류: " + displayError, this.width / 2, tableTop + 26, 0xFF5555);
-            super.render(context, mouseX, mouseY, delta);
-            return;
-        }
-        if (ranking.isEmpty()) {
-            context.drawCenteredTextWithShadow(this.textRenderer, "데이터가 없습니다. 우측 하단 '새로 고침'을 눌러주세요.", this.width / 2, tableTop + 26, 0xFFFFFF);
-            super.render(context, mouseX, mouseY, delta);
-            return;
-        }
-        if (filtered.isEmpty()) {
-            context.drawCenteredTextWithShadow(this.textRenderer, "해당 조건의 기록이 없습니다.", this.width / 2, tableTop + 26, 0xFFFFFF);
             super.render(context, mouseX, mouseY, delta);
             return;
         }
@@ -1010,41 +997,48 @@ public class RankingScreen extends Screen {
         int headerRowY = tableTop + 8;
         context.drawTextWithShadow(this.textRenderer, "순위", colRankX, headerRowY, 0xDDDDDD);
         context.drawTextWithShadow(this.textRenderer, "플레이어", colPlayerX, headerRowY, 0xDDDDDD);
-        if (showTime)
-            context.drawTextWithShadow(this.textRenderer, "기록", colTimeX, headerRowY, 0xDDDDDD);
-        if (showBody)
-            context.drawTextWithShadow(this.textRenderer, "카트바디", colBodyX, headerRowY, 0xDDDDDD);
-        if (showEngine)
-            context.drawTextWithShadow(this.textRenderer, "엔진", colEngineX, headerRowY, 0xDDDDDD);
+        if (showTime) context.drawTextWithShadow(this.textRenderer, "기록", colTimeX, headerRowY, 0xDDDDDD);
+        if (showBody) context.drawTextWithShadow(this.textRenderer, "카트바디", colBodyX, headerRowY, 0xDDDDDD);
+        if (showEngine) context.drawTextWithShadow(this.textRenderer, "엔진", colEngineX, headerRowY, 0xDDDDDD);
 
         int startY = tableTop + 24;
         int rowH = 18;
-
         int start = page * rowsPerPage;
         int end = Math.min(start + rowsPerPage, filtered.size());
 
         Entry hoveredEntry = null;
         boolean hoverOnPlayerName = false;
-
-        bodyHits.clear();
         String hoveredTireTooltip = null;
+        bodyHits.clear();
+
+        String myName = MinecraftClient.getInstance().getSession().getUsername(); // 현재 사용자 이름 가져오기
 
         for (int i = start; i < end; i++) {
             Entry e = filtered.get(i);
             int idxInPage = (i - start);
             int y = startY + idxInPage * rowH;
-
             int rank = i + 1;
 
-            if (rank == 1) context.fill(tableX + 1, y - 2, tableX + tableW - 1, y + rowH - 1, 0x44FFD700);
-            else if (rank == 2) context.fill(tableX + 1, y - 2, tableX + tableW - 1, y + rowH - 1, 0x44C0C0C0);
-            else if (rank == 3) context.fill(tableX + 1, y - 2, tableX + tableW - 1, y + rowH - 1, 0x44CD7F32);
-            else if ((idxInPage & 1) == 1) context.fill(tableX + 1, y - 2, tableX + tableW - 1, y + rowH - 1, 0x22000000);
+            boolean isMe = e.player().equalsIgnoreCase(myName); // 내 닉네임인지 확인
+
+            // 배경색 결정 로직
+            if (isMe) {
+                // 내 데이터인 경우 강조 (반투명한 초록색 계열)
+                context.fill(tableX + 1, y - 2, tableX + tableW - 1, y + rowH - 1, 0x6644AA44);
+            } else if (rank == 1) {
+                context.fill(tableX + 1, y - 2, tableX + tableW - 1, y + rowH - 1, 0x44FFD700);
+            } else if (rank == 2) {
+                context.fill(tableX + 1, y - 2, tableX + tableW - 1, y + rowH - 1, 0x44C0C0C0);
+            } else if (rank == 3) {
+                context.fill(tableX + 1, y - 2, tableX + tableW - 1, y + rowH - 1, 0x44CD7F32);
+            } else if ((idxInPage & 1) == 1) {
+                context.fill(tableX + 1, y - 2, tableX + tableW - 1, y + rowH - 1, 0x22000000);
+            }
 
             String eng = normalizeEngine(e.engineName());
             String bodyLabel = TireUtil.composeBodyLabel(e.bodyName(), e.tireName());
-
             int rankColor = (rank == 1) ? 0xFFFFE066 : (rank == 2) ? 0xFFE6E6E6 : (rank == 3) ? 0xFFFFB36B : 0xFFFFFFFF;
+
             context.drawTextWithShadow(this.textRenderer, rank + "위", colRankX, y, rankColor);
 
             String displayPlayer = e.player();
@@ -1055,7 +1049,7 @@ public class RankingScreen extends Screen {
             }
 
             int playerW = this.textRenderer.getWidth(displayPlayer);
-            boolean hoverPlayer = mouseX >= colPlayerX && mouseX <= colPlayerX + playerW && mouseY >= y - 2 && mouseY <= y - 2 + 9 + 6;
+            boolean hoverPlayer = mouseX >= colPlayerX && mouseX <= colPlayerX + playerW && mouseY >= y - 2 && mouseY <= y + 13;
 
             if (hoverPlayer) {
                 hoveredEntry = e;
@@ -1067,42 +1061,31 @@ public class RankingScreen extends Screen {
             } else {
                 int pColor = hoverPlayer ? 0xFFFFEE88 : 0xFFFFFF;
                 int rColor = hoverPlayer ? 0xFFFFEE88 : parseHex(e.repColor(), 0x55FFFF);
-
                 context.drawTextWithShadow(this.textRenderer, e.player(), colPlayerX, y, pColor);
                 context.drawTextWithShadow(this.textRenderer, repText, colPlayerX + this.textRenderer.getWidth(e.player()), y, rColor);
             }
 
             boolean hiddenSomething = false;
-
-            if (showTime) {
-                context.drawTextWithShadow(this.textRenderer, e.timeStr(), colTimeX, y, 0xFFFFFF);
-            } else {
-                hiddenSomething = true;
-            }
+            if (showTime) context.drawTextWithShadow(this.textRenderer, e.timeStr(), colTimeX, y, 0xFFFFFF); else hiddenSomething = true;
 
             int bodyW = this.textRenderer.getWidth(bodyLabel);
             BodyHit bh = new BodyHit(colBodyX, y - 2, colBodyX + bodyW, y + 10, e.tireName());
             bodyHits.add(bh);
-            if (bh.hit(mouseX, mouseY)) {
-                hoveredTireTooltip = TireUtil.tooltipName(e.tireName());
-            }
-            if (showBody) {
-                context.drawTextWithShadow(this.textRenderer, bodyLabel, colBodyX, y, 0xFFFFFF);
-            } else {
-                hiddenSomething = true;
-            }
+            if (bh.hit(mouseX, mouseY)) hoveredTireTooltip = TireUtil.tooltipName(e.tireName());
 
-            if (showEngine) {
-                context.drawTextWithShadow(this.textRenderer, eng, colEngineX, y, 0xFFFFFF);
-            } else {
-                hiddenSomething = true;
-            }
-
-            if (hiddenSomething) {
-                context.drawTextWithShadow(this.textRenderer, "+", tableX + tableW - 20, y, 0xAAAAAA);
-            }
+            if (showBody) context.drawTextWithShadow(this.textRenderer, bodyLabel, colBodyX, y, 0xFFFFFF); else hiddenSomething = true;
+            if (showEngine) context.drawTextWithShadow(this.textRenderer, eng, colEngineX, y, 0xFFFFFF); else hiddenSomething = true;
+            if (hiddenSomething) context.drawTextWithShadow(this.textRenderer, "+", tableX + tableW - 20, y, 0xAAAAAA);
         }
 
+        // 페이지 정보
+        int totalPages = Math.max(1, (filtered.size() + rowsPerPage - 1) / rowsPerPage);
+        context.drawCenteredTextWithShadow(this.textRenderer, String.format("페이지 %d / %d", (page + 1), totalPages), this.width / 2, this.height - 26, 0xAAAAAA);
+
+        // 버튼 렌더링
+        super.render(context, mouseX, mouseY, delta);
+
+        // ★ 툴팁은 모든 UI 위젯(버튼 포함) 위에 그려져야 하므로 가장 마지막에 위치
         if (hoveredTireTooltip != null) {
             drawTooltipBox(context, mouseX, mouseY, hoveredTireTooltip);
         } else if (hoveredEntry != null) {
@@ -1110,17 +1093,11 @@ public class RankingScreen extends Screen {
             String tip = hoverOnPlayerName ? ("클릭: 프로필 열기 | 등록: " + dt) : ("등록: " + dt);
             drawTooltipBox(context, mouseX, mouseY, tip);
         }
-
-        int totalPages = Math.max(1, (filtered.size() + rowsPerPage - 1) / rowsPerPage);
-        String pageInfo = String.format("페이지 %d / %d", (page + 1), totalPages);
-        context.drawCenteredTextWithShadow(this.textRenderer, pageInfo, this.width / 2, this.height - 26, 0xAAAAAA);
-
-        super.render(context, mouseX, mouseY, delta);
     }
 
     @Override
     public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
-        context.fill(0, 0, this.width, this.height, 0x88000000);
+        context.fill(0, 0, this.width, this.height, ModConfig.get().getBgColor());
     }
 
     @Override
@@ -1294,6 +1271,9 @@ public class RankingScreen extends Screen {
                     else onDone.accept(fp);
                 });
             }, "Supabase-getAll-Fetch").start();
+        }
+        public static void clearCache() {
+            cachedAll = null;
         }
     }
 

@@ -19,11 +19,17 @@ public class EventRankingScreen extends Screen {
     private static List<RankingEntry> cachedRanking = null;
     private static long cachedAt = 0;
     private static String cachedEventId = null;
-    private static final long TTL_MS = 60_000;
 
     private boolean isCacheValid() {
         if (cachedRanking == null || cachedEventId == null || !cachedEventId.equals(eventInfo.eventID())) return false;
-        return System.currentTimeMillis() - cachedAt <= TTL_MS;
+        return System.currentTimeMillis() - cachedAt <= ModConfig.get().getCacheTtlMs();
+    }
+
+    // 캐시 초기화 메서드 추가
+    public static void clearCache() {
+        cachedRanking = null;
+        cachedAt = 0;
+        cachedEventId = null;
     }
 
     private static final int PAGE_SIZE = 10;
@@ -189,7 +195,8 @@ public class EventRankingScreen extends Screen {
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         renderBackground(context, mouseX, mouseY, delta);
-        int cx = this.width / 2; int headerY = 10; int headerH = 50;
+        int cx = this.width / 2;
+        int headerY = 10; int headerH = 50;
 
         context.fill(OUTER_PAD, headerY, this.width - OUTER_PAD, headerY + headerH, 0xCC000000);
         drawRectBorder(context, OUTER_PAD, headerY, this.width - OUTER_PAD * 2, headerH, 0xFF2A2A2A);
@@ -215,20 +222,38 @@ public class EventRankingScreen extends Screen {
         if (showBody) context.drawTextWithShadow(textRenderer, "카트바디", bodyXx, headRowY, 0xDDDDDD);
         if (showEngine) context.drawTextWithShadow(textRenderer, "엔진", engineX, headRowY, 0xDDDDDD);
 
+        RankingEntry hoveredEntry = null;
+        String hoveredTireTooltip = null;
+
         if (loading) context.drawCenteredTextWithShadow(textRenderer, "데이터를 불러오는 중...", cx, tableTop + 40, 0xFFFFFF);
         else if (error != null) context.drawCenteredTextWithShadow(textRenderer, "오류: " + error, cx, tableTop + 40, 0xFF5555);
         else if (ranking.isEmpty()) context.drawCenteredTextWithShadow(textRenderer, "등록된 기록이 없습니다.", cx, tableTop + 40, 0xAAAAAA);
         else {
             int startY = tableTop + 24; int start = page * PAGE_SIZE; int end = Math.min(start + PAGE_SIZE, ranking.size());
-            RankingEntry hoveredEntry = null; String hoveredTireTooltip = null; bodyHits.clear();
+            bodyHits.clear();
+
+            String myName = MinecraftClient.getInstance().getSession().getUsername(); //
 
             for (int i = start; i < end; i++) {
-                RankingEntry r = ranking.get(i); int idx = i - start; int y = startY + idx * ROW_H; int rank = i + 1;
+                RankingEntry r = ranking.get(i);
+                int idx = i - start;
+                int y = startY + idx * ROW_H;
+                int rank = i + 1;
 
-                if (rank == 1) context.fill(tableX + 1, y - 2, tableX + tableW - 1, y + ROW_H - 2, 0x44FFD700);
-                else if (rank == 2) context.fill(tableX + 1, y - 2, tableX + tableW - 1, y + ROW_H - 2, 0x44C0C0C0);
-                else if (rank == 3) context.fill(tableX + 1, y - 2, tableX + tableW - 1, y + ROW_H - 2, 0x44CD7F32);
-                else if ((idx & 1) == 1) context.fill(tableX + 1, y - 2, tableX + tableW - 1, y + ROW_H - 2, 0x22000000);
+                boolean isMe = r.player().equalsIgnoreCase(myName); //
+
+                if (isMe) {
+                    // 내 닉네임 강조
+                    context.fill(tableX + 1, y - 2, tableX + tableW - 1, y + ROW_H - 2, 0x6644AA44);
+                } else if (rank == 1) {
+                    context.fill(tableX + 1, y - 2, tableX + tableW - 1, y + ROW_H - 2, 0x44FFD700);
+                } else if (rank == 2) {
+                    context.fill(tableX + 1, y - 2, tableX + tableW - 1, y + ROW_H - 2, 0x44C0C0C0);
+                } else if (rank == 3) {
+                    context.fill(tableX + 1, y - 2, tableX + tableW - 1, y + ROW_H - 2, 0x44CD7F32);
+                } else if ((idx & 1) == 1) {
+                    context.fill(tableX + 1, y - 2, tableX + tableW - 1, y + ROW_H - 2, 0x22000000);
+                }
 
                 int rankColor = (rank == 1) ? 0xFFFFE066 : (rank == 2) ? 0xFFE6E6E6 : (rank == 3) ? 0xFFFFB36B : 0xFFFFFFFF;
                 context.drawTextWithShadow(textRenderer, rank + "위", rankX, y, rankColor);
@@ -251,26 +276,31 @@ public class EventRankingScreen extends Screen {
                     String bodyLabel = TireUtil.composeBodyLabel(r.bodyName, r.tireName);
                     int bodyW = textRenderer.getWidth(bodyLabel);
                     BodyHit bh = new BodyHit(bodyXx, y - 2, bodyXx + bodyW, y + 10, r.tireName); bodyHits.add(bh);
-                    if (bh.hit(mouseX, mouseY)) hoveredTireTooltip = TireUtil.tooltipName(r.tireName);
+                    if (bh.hit(mouseX, mouseY)) hoveredTireTooltip = TireUtil.tooltipName(r.tireName());
                     context.drawTextWithShadow(textRenderer, bodyLabel, bodyXx, y, 0xFFFFFF);
                 } else hiddenSomething = true;
                 if (showEngine) context.drawTextWithShadow(textRenderer, r.engineName.toUpperCase(), engineX, y, 0xFFFFFF); else hiddenSomething = true;
                 if (hiddenSomething) context.drawTextWithShadow(textRenderer, "+", tableX + tableW - 16, y, 0xAAAAAA);
             }
-            if (hoveredTireTooltip != null) drawTooltipBox(context, mouseX, mouseY, hoveredTireTooltip);
-            else if (hoveredEntry != null) drawTooltipBox(context, mouseX, mouseY, "클릭: 프로필 보기 | 등록: " + formatDateTime(hoveredEntry.submittedAtMs));
         }
 
         int totalPages = Math.max(1, (ranking.size() + PAGE_SIZE - 1) / PAGE_SIZE);
         context.drawCenteredTextWithShadow(textRenderer, String.format("페이지 %d / %d", (page + 1), totalPages), cx, this.height - 26, 0xAAAAAA);
-        if (prevBtn != null) prevBtn.active = page > 0;
-        if (nextBtn != null) nextBtn.active = (page + 1) * PAGE_SIZE < ranking.size();
 
         super.render(context, mouseX, mouseY, delta);
+
+        // ★ 버튼 및 기타 UI 위에 툴팁 렌더링
+        if (hoveredTireTooltip != null) {
+            drawTooltipBox(context, mouseX, mouseY, hoveredTireTooltip);
+        } else if (hoveredEntry != null) {
+            drawTooltipBox(context, mouseX, mouseY, "클릭: 프로필 보기 | 등록: " + formatDateTime(hoveredEntry.submittedAtMs));
+        }
     }
 
     @Override
-    public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) { context.fill(0, 0, this.width, this.height, 0xAA000000); }
+    public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
+        context.fill(0, 0, this.width, this.height, ModConfig.get().getBgColor());
+    }
 
     private void drawTooltipBox(DrawContext context, int mouseX, int mouseY, String text) {
         int tw = this.textRenderer.getWidth(text); int pad = 4; int x = mouseX + 10; int y = mouseY + 10;

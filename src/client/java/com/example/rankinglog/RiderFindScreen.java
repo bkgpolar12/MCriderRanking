@@ -75,7 +75,10 @@ public class RiderFindScreen extends Screen {
 
     @Override protected void applyBlur() { }
     @Override public void blur() { }
-    @Override public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) { context.fill(0, 0, width, height, 0x88000000); }
+    @Override
+    public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
+        context.fill(0, 0, this.width, this.height, ModConfig.get().getBgColor());
+    }
     @Override public void resize(net.minecraft.client.MinecraftClient client, int width, int height) { super.resize(client, width, height); applyFilter(); updateButtons(); }
     @Override public boolean charTyped(char chr, int modifiers) { if (input != null && input.charTyped(chr, modifiers)) return true; return super.charTyped(chr, modifiers); }
     @Override public boolean keyPressed(int keyCode, int scanCode, int modifiers) { if (input != null && input.keyPressed(keyCode, scanCode, modifiers)) return true; return super.keyPressed(keyCode, scanCode, modifiers); }
