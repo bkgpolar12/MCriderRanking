@@ -81,7 +81,7 @@ public class MainMenuScreen extends Screen {
 
         addDrawableChild(ButtonWidget.builder(Text.empty(), b -> {
             String track = TrackNameUtil.readTrackNameFromLobbyBox();
-            String finalTrack = (track == null || track.isBlank()) ? "[α] 빌리지 고가의 질주" : track.trim();
+            String finalTrack = (track == null || track.isBlank()) ? ModConfig.get().defaultTrack : track.trim();
             Objects.requireNonNull(client).setScreen(new RankingScreen(finalTrack));
         }).dimensions(startX, funcButtonY, currentBtnSize, currentBtnSize).tooltip(Tooltip.of(Text.literal("랭킹 보기"))).build());
 

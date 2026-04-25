@@ -133,7 +133,7 @@ public final class BodyCaptureManager {
         }
 
         try {
-            // 2. 승객 리스트를 가져와 foreach로 순회 (효율성 개선)
+            // 2. 승객 리스트를 가져와 foreach로 순회
             List<Entity> passengers = vehicle.getPassengerList();
             for (Entity passenger : passengers) {
                 if (passenger == client.player) continue;
